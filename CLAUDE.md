@@ -27,7 +27,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Движок живёт в плагине** и в проекты не копируется: команды `team-up`/`team-lazy`/`team-down`, `reference/*` и `skills/*` доступны целевому проекту из `${CLAUDE_PLUGIN_ROOT}`. Единственное исключение — Standalone-режим setup (Q6), когда движок копируется в `.claude/` проекта.
 - **`/qtim:setup` генерирует только проект-специфичное** в целевом проекте: `.claude/team-charter.md` (контракт команды — источник истины по составу ролей), `.claude/agents/<role>-agent.md`, `.claude/settings.local.json`, `memory/`.
 
-Шаблоны в `templates/roles/` — generic: плейсхолдеры `{{FRONTEND_FRAMEWORK}}`, `{{BACKEND}}`, `{{DATABASE}}`, `{{FILE_STORAGE}}`, `{{BUILD_CMD}}`, `{{TYPECHECK_CMD}}`, `{{TEST_RUNNER}}`, `{{E2E_TOOL}}` подставляет генератор setup под стек целевого проекта. При правке шаблонов сохраняй frontmatter (`name`, `description` с example-блоками, `model`, `color`, `memory`, `tools`) и стиль плейсхолдеров; специфику конкретного стека в шаблоны не тащить.
+Шаблоны в `templates/roles/` — generic: плейсхолдеры `{{FRONTEND_FRAMEWORK}}`, `{{BACKEND}}`, `{{DATABASE}}`, `{{FILE_STORAGE}}`, `{{BUILD_CMD}}`, `{{TYPECHECK_CMD}}`, `{{TEST_RUNNER}}`, `{{E2E_TOOL}}` подставляет генератор setup под стек целевого проекта. При правке шаблонов сохраняй frontmatter (`name`, `description`, `model`, `color`, `memory`, `tools`) и стиль плейсхолдеров; `description` — один абзац «что делает роль и когда её звать», без `<example>`-блоков (он едет в каждый запрос главной сессии, а роль выбирает team-lead по charter); специфику конкретного стека в шаблоны не тащить.
 
 ## Канон рантайма Agent Teams — единый по всем файлам
 
