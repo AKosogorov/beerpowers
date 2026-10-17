@@ -1,0 +1,8 @@
+# Гейты quality-reminder по типу файла: <маска case> <текст>. Первая подошедшая маска выигрывает.
+*/shop-backend/database/migrations/*.php  Миграция: идемпотентность (второй прогон php projects/shop-backend/artisan migrate не падает), индекс на FK, ON DELETE CASCADE к владельцу; меняет данные — развилка пользователю до применения.
+*/shop-backend/tests/*.php  Тест бэкенда: .claude/bin/make-shim -C projects/shop-backend check, затем phpstan по тестовому файлу отдельно (memory/commands/backend.md).
+*/shop-backend/*.php  PHP: .claude/bin/make-shim -C projects/shop-backend check и отдельно phpstan; линт — lint FILES="<файлы>".
+*/shop-frontend/app/api/*  Сгенерированный клиент API: руками не правится — npm --prefix projects/shop-frontend run generate:api.
+*/shop-frontend/*.vue  Клиент: npm --prefix projects/shop-frontend run build (0 строк error TS), lintfix по изменённым файлам.
+*/shop-frontend/*.ts  Клиент: npm --prefix projects/shop-frontend run build (0 строк error TS), lintfix по изменённым файлам.
+*/.gitlab-ci.yml  CI: правка деплой-стадии — развилка пользователю; теги раннеров сверить в обоих репозиториях.

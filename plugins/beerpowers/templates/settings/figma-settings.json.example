@@ -1,0 +1,5 @@
+{
+  "_комментарий": "Токен Figma персональный, а не проектный — обычное место этого файла ~/.claude/figma-settings.json, он обслуживает все проекты сразу. Проектная копия .claude/figma-settings.json (под gitignore) нужна, только если у проекта отдельный аккаунт: она перебивает глобальную. Выше обеих — переменная окружения FIGMA_TOKEN.",
+  "_token": "Personal access token: figma.com → иконка профиля → Settings → вкладка Security → Personal access tokens → Generate new token. Достаточно доступа на чтение файлов (File content: read-only): скрипт только экспортирует картинки.",
+  "token": ""
+}

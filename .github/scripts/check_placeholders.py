@@ -5,6 +5,10 @@
 несбалансированные скобки ({{BUILD_CMD} / {BUILD_CMD}}), которые строгий паттерн молча
 пропустил бы. Литерал-иллюстрация `{{...}}` допустим.
 
+Каждый слот шаблона (templates/**/*.md) описан: назван в commands/setup.md или имеет раздел
+«## Слот `<ИМЯ>`» в пресете. Слот, о котором setup не знает, сборка оставляет в проекте
+буквально — workspace-check это поймает, но уже у пользователя.
+
 Обратная проверка examples/ (*.md и *.json — settings тоже генерируется):
 это «сгенерированный» вид — плейсхолдеров там быть не должно вовсе.
 """
@@ -13,15 +17,27 @@ import re
 import sys
 
 ALLOWED = {
-    "FRONTEND_FRAMEWORK",
-    "BACKEND",
-    "DATABASE",
-    "FILE_STORAGE",
-    "DEV_CMD",
-    "BUILD_CMD",
-    "TYPECHECK_CMD",
-    "TEST_RUNNER",
-    "E2E_TOOL",
+    # стек — подставляет setup Phase 1
+    "FRONTEND_FRAMEWORK", "BACKEND", "DATABASE", "FILE_STORAGE", "DEV_CMD", "BUILD_CMD",
+    "TYPECHECK_CMD", "TEST_RUNNER", "E2E_TOOL",
+    # общие
+    "PROJECT", "BEERPOWERS_VERSION",
+    # charter — setup 4.1
+    "PURPOSE", "STACK_TABLE", "COMMANDS", "ROLES_TABLE", "MODELS", "INTAKE_MODE",
+    "PROJECT_RULES", "UNIVERSAL_SKILLS", "MEMORY_FILES_EXTRA",
+    # team-lead — setup 4.1a
+    "CLASS_EXTRA", "EFFORT_TABLE", "MODEL_EXTRA", "GATES_EXTRA", "CLOSING_EXTRA",
+    # память — setup 4.5
+    "OWNERS_EXTRA", "NEVER_CODE", "CONFIRM_EXTRA", "PROJECT_MAP", "BREAKPOINTS", "INVARIANTS_DETAILED",
+    "COMMANDS_INDEX",
+    # роли — setup 4.2, значения стековых слотов — templates/roles/presets/
+    "ROLE_SKILLS", "ROLE_CONTEXT", "SKILLS_GUIDE", "DOES_NOT_TOUCH", "ROLE_SCOPE",
+    "REPO_RULES", "STACK_CHECKLIST", "STACK_CHECKLISTS",
+    "NATIVE_TOOLS_EXAMPLES", "HARD_RULES",
+    "DESIGN_FIRST_QUESTION", "LAYER_CANON", "REVIEW_SMELLS", "CONSULT_TEST",
+    "LAYER_INVARIANTS", "PROCESS_NOTES", "SCHEMA_CONVENTIONS", "MIGRATION_TEMPLATE", "QUERY_PLAN",
+    "N_PLUS_ONE", "FRONTEND_CONFIG", "TEST_RUN", "DOMAIN_COVERAGE", "PIPELINE_FACTS",
+    "SECURITY_CHECKLIST", "PERF_CHECKLIST", "ARCHITECTURE_NOTES", "PM_PIPELINE",
 }
 
 STRICT = re.compile(r"^\{\{([A-Z0-9_]+)\}\}$")
@@ -47,6 +63,13 @@ for path in sorted(pathlib.Path("plugins").rglob("*.md")):
             bad.append(f"{path}: {token} — деформированный плейсхолдер (пробелы/регистр?)")
     for m in UNBALANCED.finditer(text):
         bad.append(f"{path}: {m.group(0)} — несбалансированные скобки плейсхолдера")
+
+setup_text = pathlib.Path("plugins/beerpowers/commands/setup.md").read_text(encoding="utf-8")
+presets = "".join(p.read_text(encoding="utf-8") for p in pathlib.Path("plugins/beerpowers/templates/roles/presets").rglob("*.md"))
+for path in sorted(pathlib.Path("plugins/beerpowers/templates").rglob("*.md")):
+    for name in sorted(set(re.findall(r"\{\{([A-Z0-9_]+)\}\}",path.read_text(encoding="utf-8")))):
+        if name not in setup_text and f"## Слот `{name}`" not in presets:
+            bad.append(f"{path}: {{{{{name}}}}} — слот не описан ни в setup.md, ни разделом «## Слот» пресета")
 
 for path in example_files():
     text = path.read_text(encoding="utf-8")

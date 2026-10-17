@@ -9,17 +9,16 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0   # check_migrations.py сравнивает с базой; обрезанная история его ломает
 
       - name: JSON-манифесты валидны
         run: |
           python3 -m json.tool .claude-plugin/marketplace.json > /dev/null
-          python3 -m json.tool plugins/qtim/.claude-plugin/plugin.json > /dev/null
-          python3 -m json.tool plugins/qtim/hooks/hooks.json > /dev/null
-          python3 -m json.tool examples/nuxt-supabase/.claude/settings.json > /dev/null
-          python3 -m json.tool examples/nuxt-supabase/.claude/settings.local.json > /dev/null
+          python3 -m json.tool plugins/beerpowers/.claude-plugin/plugin.json > /dev/null
+          python3 -m json.tool plugins/beerpowers/hooks/hooks.json > /dev/null
+          python3 -m json.tool examples/laravel-nuxt/.claude/settings.json > /dev/null
 
       - name: Канон рантайма — call-синтаксис упразднённых примитивов запрещён (plugins/ + examples/)
         run: |
@@ -32,7 +31,7 @@ jobs:
       - name: Hook-скрипты синтаксически валидны (sh на Linux = dash)
         run: |
           found=0
-          for f in $(find plugins/qtim -name '*.sh' | sort); do
+          for f in $(find plugins/beerpowers -name '*.sh' | sort); do
             sh -n "$f" || exit 1
             found=$((found + 1))
           done
@@ -42,11 +41,50 @@ jobs:
           fi
           echo "OK: $found hook-скрипт(ов) синтаксически валидны"
 
+      - name: Скрипты templates/bin синтаксически валидны (по shebang)
+        run: |
+          found=0
+          for f in $(find plugins/beerpowers/templates/bin -type f ! -name '*.mk' | sort); do
+            case "$(head -n 1 "$f")" in
+              *node*) node --check "$f" || exit 1 ;;
+              *bash*) bash -n "$f" || exit 1 ;;
+              *sh*) sh -n "$f" || exit 1 ;;
+              *) echo "$f: нет shebang — копия не запустится литеральным путём" >&2; exit 1 ;;
+            esac
+            found=$((found + 1))
+          done
+          if [ "$found" -eq 0 ]; then
+            echo 'В templates/bin не найдено ни одного скрипта — проверка молча деградировала' >&2
+            exit 1
+          fi
+          echo "OK: $found скрипт(ов) templates/bin синтаксически валидны"
+
       - name: Плейсхолдеры шаблонов из белого списка
         run: python3 .github/scripts/check_placeholders.py
 
+      - name: Шаблоны без литералов проекта, engine-блоки по контракту
+        run: python3 .github/scripts/check_templates.py
+
+      - name: Барьеры-хуки — фикстуры решений
+        run: sh plugins/beerpowers/tests/hooks/run.sh
+
+      - name: screenshots-reminder — фикстуры старта и остановки роли
+        run: sh plugins/beerpowers/tests/hooks/screenshots-reminder.test.sh
+
+      - name: guard-user-files — окно команды и записи в нём
+        run: sh plugins/beerpowers/tests/hooks/guard-user-files.test.sh
+
+      - name: Git-логика скриптов — профили, база задачи, влитость, стенд
+        run: sh plugins/beerpowers/tests/bin/git.test.sh
+
+      - name: Скрипты templates/bin отвечают на --help
+        run: sh plugins/beerpowers/tests/bin/help.test.sh
+
+      - name: yandex-tracker — источники доступа и тип организации, curl-заглушка
+        run: sh plugins/beerpowers/tests/bin/yandex-tracker.test.sh
+
       - name: Workflow-скрипты синтаксически валидны
-        run: node .github/scripts/check_workflows.mjs plugins/qtim/workflows/*.mjs
+        run: node .github/scripts/check_workflows.mjs plugins/beerpowers/workflows/*.mjs
 
       - name: Относительные ссылки в plugins/ не биты
         run: python3 .github/scripts/check_links.py

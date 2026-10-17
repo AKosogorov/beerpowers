@@ -1,0 +1,134 @@
+# <ожидание> | <хук> | <фикстура> | <имя> | <JSON на stdin>
+# Фикстуры — функции fx_<имя> в run.sh (дефис в имени = подчёркивание в функции).
+
+# --- guard-push: отказы ---
+deny | guard-push | push | явная цель main | {"tool_name":"Bash","tool_input":{"command":"git push origin main"}}
+deny | guard-push | push | явная цель master через -C | {"tool_name":"Bash","tool_input":{"command":"git -C . push origin master"}}
+deny | guard-push | push | цель парой HEAD:main | {"tool_name":"Bash","tool_input":{"command":"git push origin HEAD:main"}}
+deny | guard-push | push | цель refs/heads/master | {"tool_name":"Bash","tool_input":{"command":"git push origin refs/heads/master"}}
+deny | guard-push | push | push без refspec | {"tool_name":"Bash","tool_input":{"command":"git push"}}
+deny | guard-push | push | только remote | {"tool_name":"Bash","tool_input":{"command":"git push origin"}}
+deny | guard-push | push | голый --force | {"tool_name":"Bash","tool_input":{"command":"git push --force origin PROJ-1"}}
+deny | guard-push | push | голый -f | {"tool_name":"Bash","tool_input":{"command":"git push -f origin PROJ-1"}}
+deny | guard-push | push | refspec с плюсом — голый force | {"tool_name":"Bash","tool_input":{"command":"git push origin +PROJ-1"}}
+deny | guard-push | push | удаление --delete | {"tool_name":"Bash","tool_input":{"command":"git push origin --delete PROJ-1"}}
+deny | guard-push | push | удаление refspec :ветка | {"tool_name":"Bash","tool_input":{"command":"git push origin :PROJ-1"}}
+deny | guard-push | push | --all | {"tool_name":"Bash","tool_input":{"command":"git push --all origin"}}
+deny | guard-push | push | --mirror | {"tool_name":"Bash","tool_input":{"command":"git push --mirror origin"}}
+deny | guard-push | push | опасный второй сегмент | {"tool_name":"Bash","tool_input":{"command":"git add . && git push origin main"}}
+deny | guard-push | push | префикс env | {"tool_name":"Bash","tool_input":{"command":"env FOO=1 git push origin main"}}
+deny | guard-push | push | --force-with-lease в защищённую | {"tool_name":"Bash","tool_input":{"command":"git push --force-with-lease origin main"}}
+deny | guard-push | push | путь -C в кавычках не сдвигает разбор | {"tool_name":"Bash","tool_input":{"command":"git -C \"some-dir\" push origin main"}}
+deny:merge_request.create | guard-push | push | первый push ветки задачи без MR (gitlab) | {"tool_name":"Bash","tool_input":{"command":"git push -u origin PROJ-2"}}
+deny | guard-push | push-defaultbranch | ветка по умолчанию из origin/HEAD | {"tool_name":"Bash","tool_input":{"command":"git push origin trunk"}}
+deny | guard-push | push-devdefault | dev — ветка по умолчанию | {"tool_name":"Bash","tool_input":{"command":"git push origin dev"}}
+deny | guard-push | push-devdefault | master закрыт и при dev по умолчанию | {"tool_name":"Bash","tool_input":{"command":"git push origin master"}}
+deny | guard-push | push-nohead | без origin/HEAD master закрыт по имени | {"tool_name":"Bash","tool_input":{"command":"git push origin master"}}
+deny | guard-push | push-defaultbranch | main закрыт по имени всегда | {"tool_name":"Bash","tool_input":{"command":"git push origin main"}}
+deny:merge_request.create | guard-push | push-taskdir | ветка с папкой задачи — первый push без MR | {"tool_name":"Bash","tool_input":{"command":"git push -u origin fix-header-scroll"}}
+deny | guard-push | push-github | защищённая ветка на github | {"tool_name":"Bash","tool_input":{"command":"git push origin main"}}
+
+# --- guard-push: разрешённое ---
+pass | guard-push | push | ранний отсев: в событии нет слова push | {"tool_name":"Bash","tool_input":{"command":"git status"}}
+pass | guard-push | push | первый push с -o merge_request.create | {"tool_name":"Bash","tool_input":{"command":"git push -u origin PROJ-2 -o merge_request.create -o merge_request.target=main"}}
+pass | guard-push | push | первый push с --push-option= | {"tool_name":"Bash","tool_input":{"command":"git push --push-option=merge_request.create origin PROJ-2"}}
+pass | guard-push | push | ветка задачи уже отправлялась | {"tool_name":"Bash","tool_input":{"command":"git push origin PROJ-1"}}
+pass | guard-push | push | push-опция target=main не цель отправки | {"tool_name":"Bash","tool_input":{"command":"git push origin PROJ-1 -o merge_request.target=main"}}
+pass | guard-push | push | --force-with-lease в ветку задачи | {"tool_name":"Bash","tool_input":{"command":"git push --force-with-lease origin PROJ-1"}}
+pass | guard-push | push | --force-with-lease в релизную | {"tool_name":"Bash","tool_input":{"command":"git push --force-with-lease origin release-1.2"}}
+pass | guard-push | push | ветка не по маске задачи | {"tool_name":"Bash","tool_input":{"command":"git push -u origin feature-x"}}
+pass | guard-push | push | git stash push | {"tool_name":"Bash","tool_input":{"command":"git stash push -m wip"}}
+pass | guard-push | push | push в кавычках — данные | {"tool_name":"Bash","tool_input":{"command":"git commit -m \"git push origin main\""}}
+pass | guard-push | push | push в heredoc — данные | {"tool_name":"Bash","tool_input":{"command":"git commit -F - <<EOF\ngit push --force origin main\nEOF"}}
+pass | guard-push | push-github | первый push без MR вне gitlab | {"tool_name":"Bash","tool_input":{"command":"git push -u origin PROJ-2"}}
+pass | guard-push | push | релизная заводится первым push без MR | {"tool_name":"Bash","tool_input":{"command":"git push -u origin master:refs/heads/release-autumn"}}
+pass | guard-push | push-devdefault | develop не закрыт | {"tool_name":"Bash","tool_input":{"command":"git push origin develop"}}
+deny | guard-push | defaults | без workspace.json барьер включён | {"tool_name":"Bash","tool_input":{"command":"git push origin main"}}
+pass | guard-push | all-off | флаг false | {"tool_name":"Bash","tool_input":{"command":"git push --force origin main"}}
+pass | guard-push | nocharter | нет charter | {"tool_name":"Bash","tool_input":{"command":"git push origin main"}}
+
+# --- guard-kill: отказы ---
+deny | guard-kill | defaults | taskkill //IM | {"tool_name":"Bash","tool_input":{"command":"taskkill //F //IM chrome.exe"}}
+deny | guard-kill | defaults | taskkill /IM | {"tool_name":"Bash","tool_input":{"command":"taskkill /F /IM node.exe"}}
+deny | guard-kill | defaults | taskkill //FI | {"tool_name":"Bash","tool_input":{"command":"taskkill //F //FI \"IMAGENAME eq chrome.exe\""}}
+deny | guard-kill | defaults | taskkill без //PID | {"tool_name":"Bash","tool_input":{"command":"taskkill //F //T"}}
+deny | guard-kill | defaults | pkill | {"tool_name":"Bash","tool_input":{"command":"pkill -f node"}}
+deny | guard-kill | defaults | killall | {"tool_name":"Bash","tool_input":{"command":"killall chrome"}}
+deny | guard-kill | defaults | Stop-Process -Name в powershell -c | {"tool_name":"Bash","tool_input":{"command":"powershell -c \"Stop-Process -Name chrome\""}}
+deny | guard-kill | defaults | kill 0 | {"tool_name":"Bash","tool_input":{"command":"kill 0"}}
+deny | guard-kill | defaults | kill -1 | {"tool_name":"Bash","tool_input":{"command":"kill -9 -1"}}
+deny | guard-kill | defaults | опасный второй сегмент | {"tool_name":"Bash","tool_input":{"command":"echo done; pkill node"}}
+
+# --- guard-kill: разрешённое ---
+pass | guard-kill | defaults | ранний отсев: в событии нет kill и Stop-Process | {"tool_name":"Bash","tool_input":{"command":"ls -la"}}
+pass | guard-kill | defaults | taskkill по PID | {"tool_name":"Bash","tool_input":{"command":"taskkill //F //PID 1234 //T"}}
+pass | guard-kill | defaults | kill по PID | {"tool_name":"Bash","tool_input":{"command":"kill -9 1234"}}
+pass | guard-kill | defaults | Stop-Process -Id | {"tool_name":"Bash","tool_input":{"command":"powershell -c \"Stop-Process -Id 1234\""}}
+pass | guard-kill | defaults | pkill в кавычках — данные | {"tool_name":"Bash","tool_input":{"command":"echo \"pkill node\""}}
+pass | guard-kill | defaults | посторонняя команда | {"tool_name":"Bash","tool_input":{"command":"ls -la"}}
+pass | guard-kill | all-off | флаг false | {"tool_name":"Bash","tool_input":{"command":"pkill node"}}
+pass | guard-kill | nocharter | нет charter | {"tool_name":"Bash","tool_input":{"command":"pkill node"}}
+
+# --- guard-comments ---
+pass | guard-comments | comments | ранний отсев: в событии нет слова commit | {"tool_name":"Bash","tool_input":{"command":"git status"}}
+pass | guard-comments | comments | commit в пути, подкоманда rm | {"tool_name":"Bash","tool_input":{"command":"git rm .claude/hooks/guard-commit-split.sh"}}
+deny:пересказ строки | guard-comments | comments | путь -C в кавычках | {"tool_name":"Bash","tool_input":{"command":"git -C \".\" commit -m \"fix: x\""}}
+deny-then-pass | guard-comments | comments | новые комментарии: отказ один раз | {"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}
+deny:пересказ строки | guard-comments | comments | отказ показывает строки, через -C | {"tool_name":"Bash","tool_input":{"command":"git -C . commit -m x"}}
+pass | guard-comments | comments-excluded | каталог excludeDirs своего репозитория | {"tool_name":"Bash","tool_input":{"command":"git -C projects/app commit -m x"}}
+deny:исключён только у other | guard-comments | comments-other-repo | исключение чужого репозитория не действует | {"tool_name":"Bash","tool_input":{"command":"git -C projects/app commit -m x"}}
+pass | guard-comments | comments-worktree | исключение действует в рабочем дереве репозитория | {"tool_name":"Bash","tool_input":{"command":"git -C worktrees/PROJ-1/app commit -m x"}}
+pass | guard-comments | comments-none | без комментариев: URL, shebang, атрибут PHP | {"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}
+deny:пересказ на питоне | guard-comments | comments-hash | комментарий # | {"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}
+deny:хвостовой пересказ | guard-comments | comments-trailing | комментарий в конце строки // | {"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}
+deny:хвост в yaml | guard-comments | comments-trailing | комментарий в конце строки # | {"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}
+deny:пересказ в blade | guard-comments | comments-blade | комментарий Blade | {"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}
+deny:неиндексированный пересказ | guard-comments | comments-unstaged | commit -am видит неиндексированное | {"tool_name":"Bash","tool_input":{"command":"git commit -am x"}}
+deny:неиндексированный пересказ | guard-comments | comments-unstaged | commit --all | {"tool_name":"Bash","tool_input":{"command":"git commit --all -m x"}}
+pass | guard-comments | comments-unstaged | commit без -a — только индекс | {"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}
+pass | guard-comments | comments-unstaged | --amend не равно -a | {"tool_name":"Bash","tool_input":{"command":"git commit --amend -m x"}}
+pass | guard-comments | comments | не коммит | {"tool_name":"Bash","tool_input":{"command":"git status"}}
+pass | guard-comments | comments | commit в кавычках — данные | {"tool_name":"Bash","tool_input":{"command":"echo \"git commit\""}}
+pass | guard-comments | all-off | флаг false | {"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}
+pass | guard-comments | nocharter | нет charter | {"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}
+
+# --- guard-commit-split ---
+pass | guard-commit-split | split-mixed | ранний отсев: в событии нет слова commit | {"tool_name":"Bash","tool_input":{"command":"git status"}}
+deny:memory/tasks | guard-commit-split | split-mixed | артефакты задач вместе с кодом | {"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}
+deny:memory/tasks | guard-commit-split | split-key-ignored | ключ tasksDir не читается: каталог — константа | {"tool_name":"Bash","tool_input":{"command":"git -C . commit -m x"}}
+pass | guard-commit-split | split-tasks-only | только артефакты задач | {"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}
+pass | guard-commit-split | split-other-only | без артефактов задач | {"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}
+pass | guard-commit-split | split-mixed | форма commit -- пути не разбирается | {"tool_name":"Bash","tool_input":{"command":"git commit -m x -- src/a.txt"}}
+pass | guard-commit-split | split-mixed | commit в пути, подкоманда rm | {"tool_name":"Bash","tool_input":{"command":"git rm .claude/hooks/guard-commit-split.sh"}}
+pass | guard-commit-split | all-off | флаг false | {"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}
+pass | guard-commit-split | nocharter | нет charter | {"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}
+
+# --- guard-agent-memory ---
+deny | guard-agent-memory | defaults | путь Windows | {"tool_name":"Write","tool_input":{"file_path":"C:\\proj\\.claude\\agent-memory\\architect-agent\\reference_probe.md","content":"x"}}
+deny | guard-agent-memory | defaults | путь POSIX | {"tool_name":"Write","tool_input":{"file_path":"/home/u/proj/.claude/agent-memory/architect-agent/project_notes.md","content":"x"}}
+deny | guard-agent-memory | defaults | путь Windows с прямыми слэшами | {"tool_name":"Edit","tool_input":{"file_path":"C:/proj/.claude/agent-memory/db-agent/notes.md","old_string":"a","new_string":"b"}}
+deny | guard-agent-memory | defaults | память local | {"tool_name":"Write","tool_input":{"file_path":"/proj/.claude/agent-memory-local/frontend-agent/x.md","content":"x"}}
+deny | guard-agent-memory | defaults | память user на Windows | {"tool_name":"Write","tool_input":{"file_path":"C:\\Users\\u\\.claude\\agent-memory\\reviewer-agent\\notes.md","content":"x"}}
+deny | guard-agent-memory | all-off | флага нет — false не выключает | {"tool_name":"Write","tool_input":{"file_path":"C:\\proj\\.claude\\agent-memory\\architect-agent\\notes.md","content":"x"}}
+pass | guard-agent-memory | defaults | feedback_ на Windows | {"tool_name":"Write","tool_input":{"file_path":"C:\\proj\\.claude\\agent-memory\\architect-agent\\feedback_scope.md","content":"x"}}
+pass | guard-agent-memory | defaults | MEMORY.md на POSIX | {"tool_name":"Edit","tool_input":{"file_path":"/proj/.claude/agent-memory/architect-agent/MEMORY.md","old_string":"a","new_string":"b"}}
+pass | guard-agent-memory | defaults | память проекта | {"tool_name":"Write","tool_input":{"file_path":"/proj/memory/MEMORY.md","content":"x"}}
+pass | guard-agent-memory | nocharter | нет charter | {"tool_name":"Write","tool_input":{"file_path":"/proj/.claude/agent-memory/architect-agent/notes.md","content":"x"}}
+
+# --- quality-reminder (шаблон копии в проект) ---
+has:Миграция | quality-reminder | quality | частная маска выше общей, путь Windows | {"tool_name":"Write","tool_input":{"file_path":"D:\\proj\\database\\migrations\\2024_01_01_x.php","content":"x"}}
+has:PHP: статанализ | quality-reminder | quality | общая маска, путь POSIX | {"tool_name":"Edit","tool_input":{"file_path":"/proj/app/Models/User.php","old_string":"a","new_string":"b"}}
+has:\"секреты\" | quality-reminder | quality | кавычки в тексте экранируются | {"tool_name":"Write","tool_input":{"file_path":"/proj/.gitlab-ci.yml","content":"x"}}
+pass | quality-reminder | quality | маска не подошла | {"tool_name":"Write","tool_input":{"file_path":"/proj/README.md","content":"x"}}
+pass | quality-reminder | defaults | нет файла гейтов | {"tool_name":"Write","tool_input":{"file_path":"/proj/app/Models/User.php","content":"x"}}
+
+# --- session-start ---
+has:собран qtim v1.14.0 | session-start | qtim | штамп qtim | {}
+has:Команда агентов настроена | session-start | bp-current | штамп текущей версии | {}
+has:собрана по версии плагина 1.0.0 | session-start | bp-old | дрейф версий beerpowers | {}
+lacks:[beerpowers] Команда | session-start | nocharter | нет charter — без анонса | {}
+has:# Ссылки на файлы в ответе человеку | session-start | nocharter | правила без charter, опции не заданы | {}
+has:# Просьба к человеку | session-start | bp-current | правила и в проекте с charter | {}
+lacks:# Ссылки на файлы | session-start | nocharter-link-off | опция false выключает правило | {}
+has:# Команды для человека | session-start | nocharter-link-off | остальные правила на месте | {}
+pass | session-start | nocharter-rules-off | все опции false, нет charter | {}

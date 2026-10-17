@@ -1,7 +1,17 @@
 # Third-party notices
 
-Часть скилов плагина `qtim` — производные адаптации сторонних скилов под контракт команды
-и русский язык: структура и часть правил заимствованы, текст написан заново, механики,
+## toiiia/qtim-agent-team
+
+<https://github.com/toiiia/qtim-agent-team>
+
+Плагин `beerpowers` — форк плагина `qtim` 1.14.0 (коммит `4f51e09`): движок команды, команды,
+reference, скилы, Workflow-скрипты, CI и golden-эталон унаследованы и переработаны. Copyright
+и permission notice апстрима — в [`LICENSE`](LICENSE), первая строка copyright.
+
+## Скилы, адаптированные апстримом
+
+Часть скилов, унаследованных от qtim, — производные адаптации сторонних скилов под контракт
+команды и русский язык: структура и часть правил заимствованы, текст написан заново, механики,
 конфликтующие с ролевой моделью, не перенесены. Оригиналы распространяются по MIT; ниже —
 их copyright и permission notice.
 
@@ -9,9 +19,9 @@
 
 <https://github.com/mattpocock/skills>
 
-Производные: `plugins/qtim/skills/debug-loop/` (из `diagnosing-bugs`),
-`plugins/qtim/skills/prototype/` (из `prototype`),
-`plugins/qtim/skills/grill/` (из `grilling` / `grill-me`).
+Производные: `plugins/beerpowers/skills/debug-loop/` (из `diagnosing-bugs`),
+`plugins/beerpowers/skills/prototype/` (из `prototype`),
+`plugins/beerpowers/skills/grill/` (из `grilling` / `grill-me`).
 
 ```
 MIT License
@@ -41,7 +51,7 @@ SOFTWARE.
 
 <https://github.com/DietrichGebert/ponytail>
 
-Производное: `plugins/qtim/skills/minimal-diff/` (из `ponytail`).
+Производное: `plugins/beerpowers/skills/minimal-diff/` (из `ponytail`).
 
 ```
 MIT License

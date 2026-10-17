@@ -1,0 +1,105 @@
+{
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
+  "permissions": {
+    "deny": [
+      "Read(./**/.env)",
+      "Read(./**/.env.*)",
+      "Edit(./**/.env)",
+      "Edit(./**/.env.*)",
+      "Read(~/.ssh/**)",
+      "Edit(~/.ssh/**)",
+      "Bash(cd:*)",
+      "Bash(rm -rf:*)",
+      "Bash(sudo:*)",
+      "Bash(git push -f:*)",
+      "Bash(git push --all:*)",
+      "Bash(git push --mirror:*)",
+      "Bash(git push --delete:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git clean:*)",
+      "Bash(git push origin master:*)",
+      "Bash(git push origin main:*)",
+      "Bash(git -C * reset --hard:*)",
+      "Bash(git -C * clean:*)",
+      "Bash(git -C * push -f:*)",
+      "Bash(git -C * push --delete:*)",
+      "Bash(git -C * push origin master:*)",
+      "Bash(git -C * push origin main:*)",
+      "Bash(php artisan migrate:fresh:*)",
+      "Bash(php artisan migrate:reset:*)",
+      "Bash(php artisan db:wipe:*)",
+      "Bash(php projects/shop-backend/artisan migrate:fresh:*)",
+      "Bash(php projects/shop-backend/artisan migrate:reset:*)",
+      "Bash(php projects/shop-backend/artisan db:wipe:*)",
+      "Bash(php worktrees/*/shop-backend/artisan migrate:fresh:*)",
+      "Bash(php worktrees/*/shop-backend/artisan migrate:reset:*)",
+      "Bash(php worktrees/*/shop-backend/artisan db:wipe:*)"
+    ],
+    "allow": [
+      "Bash(git -C:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git rev-list:*)",
+      "Bash(git merge-base:*)",
+      "Bash(git ls-files:*)",
+      "Bash(git fetch:*)",
+      "Bash(git checkout:*)",
+      "Bash(git switch:*)",
+      "Bash(git restore:*)",
+      "Bash(git cherry-pick:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push -u origin:*)",
+      "Bash(git push origin:*)",
+      "Bash(.claude/bin/workspace-clean:*)",
+      "Bash(.claude/bin/worktree-add:*)",
+      "Bash(.claude/bin/tasks-status:*)",
+      "Bash(.claude/bin/figma-export:*)",
+      "Bash(.claude/bin/make-shim:*)",
+      "Bash(node .claude/bin/tech-debt-index.mjs:*)",
+      "Bash(node .claude/bin/workspace-check.mjs:*)",
+      "Bash(node .claude/bin/token-audit.mjs:*)",
+      "Bash(node .claude/bin/cdp-screenshot.mjs:*)",
+      "Bash(npm --prefix projects/shop-frontend run:*)",
+      "Bash(npm --prefix worktrees/*/shop-frontend run:*)",
+      "Bash(make -C projects/shop-backend:*)",
+      "Bash(make -C worktrees/*/shop-backend:*)",
+      "mcp__claude-in-chrome__read_page",
+      "mcp__claude-in-chrome__get_page_text",
+      "mcp__claude-in-chrome__find",
+      "mcp__claude-in-chrome__read_console_messages",
+      "mcp__claude-in-chrome__read_network_requests",
+      "mcp__Claude_Browser__read_page",
+      "mcp__Claude_Browser__get_page_text",
+      "mcp__Claude_Browser__find",
+      "mcp__Claude_Browser__read_console_messages",
+      "mcp__Claude_Browser__read_network_requests"
+    ]
+  },
+  "claudeMdExcludes": [
+    "**/projects/*/CLAUDE.md",
+    "**/projects/*/.claude/CLAUDE.md",
+    "**/worktrees/*/*/CLAUDE.md",
+    "**/worktrees/*/*/.claude/CLAUDE.md"
+  ],
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/quality-reminder.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
