@@ -1,0 +1,8 @@
+{
+  "standArchive": false,
+  "removeSourceBranch": true,
+  "repos": {
+    "shop-backend": "main-default",
+    "shop-frontend": "main-default"
+  }
+}

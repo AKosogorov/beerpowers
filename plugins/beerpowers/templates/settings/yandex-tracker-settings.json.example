@@ -1,0 +1,9 @@
+{
+  "_комментарий": "Токен у Трекера один на человека, а проектов много — обычное место этого файла ~/.claude/yandex-tracker-settings.json, он обслуживает все проекты сразу. Проектная копия .claude/yandex-tracker-settings.json (под gitignore) нужна, только если у проекта другая организация: она перебивает глобальную. Выше обеих — переменные окружения YANDEX_TRACKER_TOKEN, YANDEX_TRACKER_ORG_ID, YANDEX_TRACKER_ORG_TYPE. Ключи разрешаются по отдельности: orgId можно держать в проекте, токен — глобально.",
+  "_token": "OAuth-токен Яндекса с доступом к Трекеру. Выпускается на oauth.yandex.ru приложением со scope tracker:read (tracker:write не нужен — скрипт только читает).",
+  "token": "",
+  "_orgId": "Идентификатор организации. Смотреть на https://center.yandex.cloud/dashboard — поле «Идентификатор» в карточке организации; организация оттуда — Yandex Cloud Organization, то есть orgType = cloud.",
+  "orgId": "",
+  "_orgType": "cloud — организация в Yandex Cloud Organization (заголовок X-Cloud-Org-ID); yandex360 — организация Яндекс 360 (заголовок X-Org-ID). Пусто — скрипт определит сам первым запросом и подскажет, что вписать.",
+  "orgType": ""
+}

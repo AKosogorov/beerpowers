@@ -1,0 +1,11 @@
+/projects/
+/worktrees/
+memory/tasks/*/figma/
+memory/tasks/*/screenshots/
+memory/tasks/*/tracker/task-attachment/
+.claude/settings.local.json
+.claude/.cache/
+.claude/git-settings.local.json
+.idea/
+.vscode/
+.claude/figma-settings.json

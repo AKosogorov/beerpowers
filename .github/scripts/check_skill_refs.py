@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Ссылки на собственные скилы плагина резолвятся, имена скилов совпадают с каталогами.
 
-Зачем: вызов скила стал строкой обязательных чеклистов ролей (`qtim:minimal-diff`
-у `front` и `db`, `qtim:brainstorm` у `architect`, `qtim:debug-loop` у исполнителей).
+Зачем: вызов скила стал строкой обязательных чеклистов ролей (`beerpowers:minimal-diff`
+у `front` и `db`, `beerpowers:brainstorm` у `architect`, `beerpowers:debug-loop` у исполнителей).
 Опечатка в имени не ломает ни одну другую проверку: `check_links.py` смотрит только
 markdown-ссылки, `check_golden.py` — лишь наличие инструмента `Skill` во frontmatter.
 Роль при этом молча не выполнит пункт чеклиста — скил с таким именем не резолвится.
@@ -11,10 +11,10 @@ markdown-ссылки, `check_golden.py` — лишь наличие инстр�
   * `name:` в **первом frontmatter-блоке** `skills/<dir>/SKILL.md` равен имени каталога —
     рантайм адресует скил по `name`, а ссылки в промптах и Standalone-копирование идут
     по каталогу;
-  * каждое упоминание `qtim:<имя>` без ведущего слэша в `plugins/`, `examples/` и корневых
+  * каждое упоминание `beerpowers:<имя>` без ведущего слэша в `plugins/`, `examples/` и корневых
     `*.md` резолвится в существующий скил. Имя захватывается целиком, включая недопустимые
-    символы, — иначе `qtim:minimal-diff_typo` прошло бы как валидный префикс. Упоминание
-    команды (`qtim:setup`) допускаем: со слэшем или без, это другой namespace;
+    символы, — иначе `beerpowers:minimal-diff_typo` прошло бы как валидный префикс. Упоминание
+    команды (`beerpowers:setup`) допускаем: со слэшем или без, это другой namespace;
   * охват ненулевой: ноль просмотренных ссылок = проверка молча деградировала, это fail.
 """
 
@@ -23,13 +23,15 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SKILLS_DIR = ROOT / "plugins" / "qtim" / "skills"
-COMMANDS_DIR = ROOT / "plugins" / "qtim" / "commands"
+SKILLS_DIR = ROOT / "plugins" / "beerpowers" / "skills"
+COMMANDS_DIR = ROOT / "plugins" / "beerpowers" / "commands"
 SCAN_DIRS = [ROOT / "plugins", ROOT / "examples"]
 
-# Имя забираем целиком до разделителя: `qtim:foo_typo` должно стать `foo_typo`
+# Имя забираем целиком до разделителя: `beerpowers:foo_typo` должно стать `foo_typo`
 # и не резолвиться, а не усечься до валидного префикса `foo`.
-REF_RE = re.compile(r"(?<![/\w])qtim:([A-Za-z0-9_.-]+)")
+# `beerpowers:engine` — пространство маркеров engine-блоков (`<!-- beerpowers:engine … -->`),
+# а не скил: reference/workspace.md, «Engine-блоки».
+REF_RE = re.compile(r"(?<![/\w])beerpowers:(?!engine\b)([A-Za-z0-9_.-]+)")
 FRONTMATTER_RE = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?$", re.DOTALL | re.MULTILINE)
 NAME_RE = re.compile(r"^name:\s*(.+?)\s*$", re.MULTILINE)
 
@@ -101,13 +103,13 @@ def main():
                 continue
             line = text.count("\n", 0, match.start()) + 1
             problems.append(
-                f"{path.relative_to(ROOT)}:{line}: ссылка `qtim:{ref}` не резолвится "
-                f"ни в скил `plugins/qtim/skills/{ref}/`, ни в команду"
+                f"{path.relative_to(ROOT)}:{line}: ссылка `beerpowers:{ref}` не резолвится "
+                f"ни в скил `plugins/beerpowers/skills/{ref}/`, ни в команду"
             )
 
     if checked == 0:
         problems.append(
-            "просмотрено 0 упоминаний `qtim:*` — стиль ссылок изменился или область скана "
+            "просмотрено 0 упоминаний `beerpowers:*` — стиль ссылок изменился или область скана "
             "пуста; проверка не должна проходить молча"
         )
 
@@ -119,7 +121,7 @@ def main():
 
     print(
         f"OK: {len(skills)} скил(ов), имена совпадают с каталогами; "
-        f"{checked} упоминаний `qtim:*` резолвятся"
+        f"{checked} упоминаний `beerpowers:*` резолвятся"
     )
     return 0
 

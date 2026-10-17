@@ -1,17 +1,17 @@
 {
-  "name": "qtim-agent-team",
-  "description": "Личный маркетплейс: плагин-движок для bootstrap и оркестрации команды специализированных субагентов под любой проект.",
+  "name": "akosogorov",
+  "description": "Маркетплейс плагина beerpowers — движка команды специализированных субагентов для веб-продукта: бэкенд и фронтенд одним или несколькими репозиториями.",
   "owner": {
-    "name": "Антон Фокин"
+    "name": "kosogorov"
   },
   "plugins": [
     {
-      "name": "qtim",
-      "description": "Bootstrap и оркестрация команды субагентов: генератор setup с ролевым входом (dev / PM-аналитик) + PM-конвейер feature, движок team-up/team-lazy/team-down (рантайм Agent Teams), team-sync для миграции собранных команд, team-retro/onboard/doctor, готовые Workflow-скрипты, intake-протокол, каталог паттернов оркестрации, Codex second-opinion, hooks-гейты.",
-      "source": "./plugins/qtim",
+      "name": "beerpowers",
+      "description": "Команда субагентов для веб-продукта — бэкенд и фронтенд одним или несколькими репозиториями: setup собирает роли под стек проекта, задача идёт от постановки в трекере до merge request через гейты сборки, тестов и два прохода ревью. Барьеры-хуки, память проекта по виду знания, рабочее дерево на задачу. Форк qtim (github.com/toiiia/qtim-agent-team).",
+      "source": "./plugins/beerpowers",
       "category": "development",
       "author": {
-        "name": "Антон Фокин"
+        "name": "kosogorov"
       }
     }
   ]

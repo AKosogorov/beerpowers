@@ -1,0 +1,95 @@
+{
+  "description": "Hooks плагина beerpowers. Во всех проектах — правила ответа человеку из rules/ при старте сессии, каждое выключается опцией userConfig (инжектится в контекст; см. session-start.sh). Остальное активно только в проектах с .claude/team-charter.md: анонс команды при старте сессии с детектором дрейфа версий charter<->плагин; напоминание проверить артефакты завершившегося субагента (SubagentStop — advisory для человека: stdout этого события в контекст модели не инжектится, виден в transcript); барьеры PreToolUse — guard-push, guard-kill, guard-comments, guard-commit-split на Bash (каждый включается флагом barriers.<имя> в .claude/workspace.json) и guard-agent-memory на Edit|Write (флага нет); guard-user-files на UserPromptSubmit, Skill, Write и Bash — только пока идёт /beerpowers:setup, onboard или product-onboard, флага нет. Механика — reference/hooks.md.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/session-start.sh\" \"${CLAUDE_PLUGIN_ROOT}\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/guard-user-files.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/guard-push.sh\"",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/guard-kill.sh\"",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/guard-comments.sh\"",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/guard-commit-split.sh\"",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/guard-user-files.sh\"",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/guard-agent-memory.sh\"",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/guard-user-files.sh\"",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/guard-user-files.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "test -f \"${CLAUDE_PROJECT_DIR:-.}/.claude/team-charter.md\" && echo 'Субагент завершился. Team-lead: проверь реальные артефакты (изменённые файлы, отчёт, обновления memory/), не полагайся только на устный ack. Нет артефактов — переспроси через SendMessage или проверь сам.' || true",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

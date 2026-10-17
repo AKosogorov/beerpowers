@@ -4,10 +4,10 @@
 Контракт (CLAUDE.md, «Версионирование и миграции сгенерированного»): изменил шаблоны
 `templates/`, структуру charter или settings/hooks-baseline в Phase 4 setup.md — добавь
 запись `## → <версия>` в `reference/migrations.md`. Иначе собранные в проектах команды
-останутся на старом канале, а `/qtim:team-sync` о правке не узнает.
+останутся на старом канале, а `/beerpowers:update` о правке не узнает.
 
 Проверка держится на диффе против базы:
-  * триггер — файлы в `plugins/qtim/templates/**` (роли и hook-скрипты) либо изменённые
+  * триггер — файлы в `plugins/beerpowers/templates/**` (роли и hook-скрипты) либо изменённые
     строки внутри `## Phase 4: Generation` в `commands/setup.md`;
   * требуется, чтобы `reference/migrations.md` был в том же диффе и содержал заголовок
     `## → <версия из plugin.json>`.
@@ -22,10 +22,10 @@ import re
 import subprocess
 import sys
 
-TEMPLATES_PREFIX = "plugins/qtim/templates/"
-SETUP = "plugins/qtim/commands/setup.md"
-MIGRATIONS = "plugins/qtim/reference/migrations.md"
-PLUGIN_JSON = "plugins/qtim/.claude-plugin/plugin.json"
+TEMPLATES_PREFIX = "plugins/beerpowers/templates/"
+SETUP = "plugins/beerpowers/commands/setup.md"
+MIGRATIONS = "plugins/beerpowers/reference/migrations.md"
+PLUGIN_JSON = "plugins/beerpowers/.claude-plugin/plugin.json"
 PHASE_START = re.compile(r"^## Phase 4: Generation\s*$")
 PHASE_END = re.compile(r"^## Phase 5\b")
 HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
@@ -131,7 +131,7 @@ def main():
     if MIGRATIONS not in changed:
         problems.append(
             f"{MIGRATIONS} не изменён в этом диффе — правка сгенерированного без записи "
-            f"в реестре не доедет до собранных команд через /qtim:team-sync"
+            f"в реестре не доедет до собранных команд через /beerpowers:update"
         )
     if entry not in migrations_text:
         problems.append(
@@ -148,7 +148,7 @@ def main():
             print(f"  - {p}")
         print(
             "\nКонтракт — CLAUDE.md, «Версионирование и миграции сгенерированного»: "
-            "запись `## → <версия>` в реестре + строка «team-sync» в CHANGELOG + минорный бамп."
+            "запись `## → <версия>` в реестре + строка «update» в CHANGELOG + минорный бамп."
         )
         return 1
 

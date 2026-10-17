@@ -1,0 +1,18 @@
+{
+  "beerpowers": "2.0.0",
+  "ui": true,
+  "viewports": [
+    { "name": "mobile", "width": 375, "height": 667, "mobile": true },
+    { "name": "tablet", "width": 768, "height": 1024, "mobile": true },
+    { "name": "desktop", "width": 1280, "height": 720 }
+  ],
+  "barriers": {
+    "guard-push": true,
+    "guard-kill": true,
+    "guard-comments": true,
+    "guard-commit-split": true
+  },
+  "comments": {
+    "excludeDirs": ["projects/shop-frontend/app/api"]
+  }
+}
