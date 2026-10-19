@@ -1,6 +1,6 @@
 # Team Charter — shop
 
-**Версия charter:** 2.0 · **generated-by: beerpowers v2.0.0 · mode: plugin-linked**
+**Версия charter:** 2.0 · **generated-by: beerpowers v2.0.1 · mode: plugin-linked**
 
 <!-- beerpowers:engine charter-intro -->
 Этот файл читают все роли через `@` в `CLAUDE.md`: здесь то, что нужно исполнителю —
