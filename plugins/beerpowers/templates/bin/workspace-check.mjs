@@ -108,6 +108,16 @@ check('каталоги кода и рабочих деревьев стоят �
 
 // Ссылки на файлы памяти и конфигурации: `memory/…`, `.claude/…` в обратных кавычках
 // и markdown-ссылки — файл должен существовать. Шаблоны с <КОД>, * и NNN пропускаются.
+// Файлы, которые создают команды плагина позже, а не setup, — пока их нет, ссылка не битая:
+// роль `product` опирается именно на их отсутствие («нет её — опирайся на глоссарий»), и заглушка
+// от setup сломала бы это поведение. Список сверяется с commands/product-onboard.md и feature.md.
+const createdLater = new Set([
+  'memory/decisions.md', // /beerpowers:feature, стадия Handoff
+  'memory/product-map.md', // /beerpowers:product-onboard
+  'memory/product-actors.md',
+  'memory/product-glossary.md',
+  'memory/product-metrics.md',
+]);
 check('ссылки на файлы памяти и .claude не битые', () => {
   const files = [
     ...walk(path.join(root, 'memory'), (p) => p.endsWith('.md') && !under(p, tasksAbs)),
@@ -125,6 +135,7 @@ check('ссылки на файлы памяти и .claude не битые', ()
       if (/[<*]|NNN|<КОД>/.test(target)) continue;
       // Личные файлы доступов существуют не на каждой машине.
       if (/-settings\.json$|settings\.local\.json$/.test(target)) continue;
+      if (m[1] && createdLater.has(target)) continue;
       const abs = m[1] ? path.join(root, target) : path.resolve(path.dirname(f), target);
       if (!exists(abs)) broken.push(`${rel(f)}: ${target}`);
     }

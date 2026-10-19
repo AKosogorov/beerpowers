@@ -1,5 +1,5 @@
 {
-  "beerpowers": "2.0.0",
+  "beerpowers": "2.0.1",
   "ui": true,
   "viewports": [
     { "name": "mobile", "width": 375, "height": 667, "mobile": true },

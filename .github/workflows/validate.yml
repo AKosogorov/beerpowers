@@ -83,6 +83,9 @@ jobs:
       - name: yandex-tracker — источники доступа и тип организации, curl-заглушка
         run: sh plugins/beerpowers/tests/bin/yandex-tracker.test.sh
 
+      - name: workspace-check — файлы, которые создают команды плагина позже, не битые ссылки
+        run: sh plugins/beerpowers/tests/bin/workspace-check.test.sh
+
       - name: Workflow-скрипты синтаксически валидны
         run: node .github/scripts/check_workflows.mjs plugins/beerpowers/workflows/*.mjs
 
@@ -90,7 +93,9 @@ jobs:
         run: python3 .github/scripts/check_links.py
 
       - name: Golden-эталон семантически валиден
-        run: python3 .github/scripts/check_golden.py
+        run: |
+          node .github/scripts/sync_golden.mjs --check
+          python3 .github/scripts/check_golden.py
 
       - name: Ссылки на скилы резолвятся, имена совпадают с каталогами
         run: python3 .github/scripts/check_skill_refs.py
