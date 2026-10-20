@@ -241,3 +241,27 @@ Engine-блоки и копии скриптов не менялись; новы
 Маски того же назначения под старую раскладку qtim — без префикса `worktrees/`
 (`Bash(git -C chore-dev-rebuild/* push:*)`), в том числе в личном `settings.local.json`, — update
 называет в отчёте устаревшими: путь `worktrees/chore-…` они не покрывают.
+
+## → 2.1.0
+
+Запись в трекер: команда `/beerpowers:tracker`, адаптер записи (контракт — `workspace.md`,
+«Адаптер записи в трекер»), для Яндекс Трекера — `yandex-tracker-write.mjs`. Новый engine-блок `tracker-write` в `team-lead.md` — после блока
+`closing`, отдельным разделом «Запись в трекер»; в блоке `closing` у первого пункта — строка
+про обязательные комментарии в трекер после MR. Новая копия `.claude/reference/tasks-layout.md`:
+QA-чеклист в комментарий трекера прикладывает team-lead.
+
+Проекту со скопированным `.claude/bin/yandex-tracker` — новая копия
+`.claude/bin/yandex-tracker-write.mjs` (setup 4.4, по Q5 вместе с `yandex-tracker`) и разрешения
+в `.claude/settings.json` (setup 4.3):
+
+- `permissions.allow` — по маске на команду без подтверждения: `Bash(node .claude/bin/yandex-tracker-write.mjs template:*)`,
+  `… check:*`, `… comment:*`, `… links:*`, `… link:*`, `… unlink:*`, `… transitions:*`;
+- `permissions.ask` — команды после «да» человека: `… create:*`, `… edit:*`, `… move:*`,
+  `… attach:*`, `… detach:*`.
+
+Файл в автоматическом режиме правит человек: update готовит итоговый `settings.json` и дифф.
+Широкая маска `Bash(node .claude/bin/yandex-tracker-write.mjs:*)`, если её кто-то добавил,
+update называет в отчёте: она пускает запись без вопроса. Токену для записи нужен scope
+`tracker:write` — без него скрипт отвечает 403 с подсказкой; это действие человека, update его
+только называет. Проекту без `yandex-tracker` копия и разрешения не нужны, блок `tracker-write`
+переносится как есть: он действует только при скопированном адаптере.

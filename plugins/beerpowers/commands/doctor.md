@@ -144,7 +144,7 @@ description: Проверить, что команда работает на э�
       **fail**, фикс — путь личной переменной `BEERPOWERS_CHROME` в `env` файла
       `.claude/settings.local.json` (не в `workspace.json`: путь у каждой машины свой);
     - скопирован `make-shim` — `.claude/bin/make-shim --version` отрабатывает (`make` найден);
-    - скопирован `yandex-tracker` или `figma-export` — их `--help` отвечает, а токен в личных
+    - скопирован `yandex-tracker`, `yandex-tracker-write.mjs` или `figma-export` — их `--help` отвечает, а токен в личных
       настройках есть (значение не печатать, только факт наличия);
     - личные переменные из `env` файла `.claude/settings.local.json`, которые указывают на файл
       (`BEERPOWERS_CHROME`), указывают на существующий.
