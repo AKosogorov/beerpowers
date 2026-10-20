@@ -10,6 +10,9 @@ deny | guard-push | push | push без refspec | {"tool_name":"Bash","tool_input
 deny | guard-push | push | только remote | {"tool_name":"Bash","tool_input":{"command":"git push origin"}}
 deny | guard-push | push | голый --force | {"tool_name":"Bash","tool_input":{"command":"git push --force origin PROJ-1"}}
 deny | guard-push | push | голый -f | {"tool_name":"Bash","tool_input":{"command":"git push -f origin PROJ-1"}}
+deny | guard-push | push | дерево стенда dev отправляет не dev | {"tool_name":"Bash","tool_input":{"command":"git -C worktrees/chore-dev-rebuild/shop-backend push --force-with-lease origin release-autumn"}}
+deny | guard-push | push | дерево стенда dev в master — закрыт и по имени | {"tool_name":"Bash","tool_input":{"command":"git -C worktrees/chore-dev-rebuild/shop-backend push --force-with-lease origin master"}}
+deny | guard-push | push | дерево стенда абсолютным путём, цель HEAD | {"tool_name":"Bash","tool_input":{"command":"git -C D:/ws/worktrees/chore-stage-rebuild/shop-backend push origin HEAD"}}
 deny | guard-push | push | refspec с плюсом — голый force | {"tool_name":"Bash","tool_input":{"command":"git push origin +PROJ-1"}}
 deny | guard-push | push | удаление --delete | {"tool_name":"Bash","tool_input":{"command":"git push origin --delete PROJ-1"}}
 deny | guard-push | push | удаление refspec :ветка | {"tool_name":"Bash","tool_input":{"command":"git push origin :PROJ-1"}}
@@ -43,6 +46,7 @@ pass | guard-push | push | push в heredoc — данные | {"tool_name":"Bash
 pass | guard-push | push-github | первый push без MR вне gitlab | {"tool_name":"Bash","tool_input":{"command":"git push -u origin PROJ-2"}}
 pass | guard-push | push | релизная заводится первым push без MR | {"tool_name":"Bash","tool_input":{"command":"git push -u origin master:refs/heads/release-autumn"}}
 pass | guard-push | push-devdefault | develop не закрыт | {"tool_name":"Bash","tool_input":{"command":"git push origin develop"}}
+pass | guard-push | push | дерево стенда dev отправляет dev | {"tool_name":"Bash","tool_input":{"command":"git -C worktrees/chore-dev-rebuild/shop-backend push origin dev"}}
 deny | guard-push | defaults | без workspace.json барьер включён | {"tool_name":"Bash","tool_input":{"command":"git push origin main"}}
 pass | guard-push | all-off | флаг false | {"tool_name":"Bash","tool_input":{"command":"git push --force origin main"}}
 pass | guard-push | nocharter | нет charter | {"tool_name":"Bash","tool_input":{"command":"git push origin main"}}

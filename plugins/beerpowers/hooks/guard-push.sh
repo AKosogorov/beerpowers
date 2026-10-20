@@ -276,6 +276,20 @@ check_segment() {
     fi
   done
 
+  # Дерево пересборки стенда (git-flow.md, «Залить ветку в стенд») отправляет только свой стенд.
+  # Push из таких деревьев setup разрешает маской Bash(git -C worktrees/chore-*-rebuild/* push:*):
+  # она снимает вопрос классификатора автоматического режима, но ветку назначения не ограничивает,
+  # а имён стендов в настройках нет. Ветку ограничивает этот барьер — по имени каталога.
+  case "$repo" in
+    worktrees/chore-*-rebuild/*|*/worktrees/chore-*-rebuild/*)
+      stand=${repo%%-rebuild/*}
+      stand=${stand##*worktrees/chore-}
+      if [ "$target_branch" != "$stand" ]; then
+        deny "Из дерева пересборки стенда $stand push идёт только в ветку $stand, а не в $target_branch: git -C $repo push --force-with-lease origin $stand. Другую ветку отправляй из её собственного дерева или каталога репозитория."
+      fi
+      ;;
+  esac
+
   # Релизные ветки здесь не запрещены: их перекладывает team-lead ребейзом, и без
   # --force-with-lease это невозможно. Голый --force отсекается выше и для них.
   #
