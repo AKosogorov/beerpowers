@@ -83,6 +83,9 @@ jobs:
       - name: yandex-tracker — источники доступа и тип организации, curl-заглушка
         run: sh plugins/beerpowers/tests/bin/yandex-tracker.test.sh
 
+      - name: yandex-tracker-write — черновик против шаблона, запись против заглушки API
+        run: sh plugins/beerpowers/tests/bin/yandex-tracker-write.test.sh
+
       - name: workspace-check — файлы, которые создают команды плагина позже, не битые ссылки
         run: sh plugins/beerpowers/tests/bin/workspace-check.test.sh
 

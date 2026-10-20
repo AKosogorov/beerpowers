@@ -179,7 +179,7 @@ git clone <адрес репозитория фронтенда> projects/shop-f
 
 | Интеграция | Что даёт | Что нужно |
 |---|---|---|
-| Яндекс Трекер | постановка с комментариями и вложениями | OAuth-токен с правом `tracker:read` и идентификатор организации — в `~/.claude/yandex-tracker-settings.json` (один файл на все проекты) или в переменных `YANDEX_TRACKER_*`. Где выпустить токен и что куда вписать, объясняет шаблон `.claude/yandex-tracker-settings.json.example` |
+| Яндекс Трекер | постановка с комментариями и вложениями; задачи и баги по шаблону после твоего «да», комментарии, связи, статусы | OAuth-токен с правом `tracker:read`, для записи — ещё `tracker:write`, и идентификатор организации — в `~/.claude/yandex-tracker-settings.json` (один файл на все проекты) или в переменных `YANDEX_TRACKER_*`. Где выпустить токен и что куда вписать, объясняет шаблон `.claude/yandex-tracker-settings.json.example` |
 | Figma | фреймы макета файлами в папке задачи | personal access token на чтение — в `~/.claude/figma-settings.json` или в `FIGMA_TOKEN`; шаблон — `.claude/figma-settings.json.example` |
 | GitLab | MR с полным описанием | при HTTPS токен отдаёт git credential helper, настраивать ничего не нужно; при SSH setup спросит, где лежит токен |
 | GitHub | PR | авторизованный `gh` |
@@ -207,6 +207,7 @@ git clone <адрес репозитория фронтенда> projects/shop-f
 | Команда | Когда звать |
 |---|---|
 | `/beerpowers:task-start <код-задачи>` | начать задачу или вернуться к ней; `--preview` — только разбор |
+| `/beerpowers:tracker <что сделать>` | завести задачу или баг по шаблону, написать комментарий, поправить описание, сменить статус, связать задачи — словами; задача и правка уходят после твоего «да» |
 | `/beerpowers:team-lazy` | задача на несколько ролей, которых не нужно поднимать заранее |
 | `/beerpowers:team-up` | эпик с петлями «сделал → проверили → доработал» — вся команда сразу |
 | `/beerpowers:team-down` | свернуть команду; незавершённое остаётся в `handover.md` задачи |
@@ -221,7 +222,7 @@ git clone <адрес репозитория фронтенда> projects/shop-f
 | `/beerpowers:feature`, `/beerpowers:product-onboard` | продуктовая дорожка: от хотелки через PRD и декомпозицию к плану; включается в setup |
 
 У плагина есть и скиллы — `brainstorm`, `grill`, `minimal-diff`, `debug-loop`, `prototype`,
-`page-screenshot`, `economy`, `summarizing-mr-links`. В меню `/` их нет: их зовут тимлид
+`page-screenshot`, `economy`, `summarizing-mr-links`, `tracker-task`. В меню `/` их нет: их зовут тимлид
 и роли, когда наступает нужный момент.
 
 ## ⬆️ Обновление

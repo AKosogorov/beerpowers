@@ -13,7 +13,7 @@
 2. [CLAUDE.md](CLAUDE.md) (89) — архитектура одним экраном: что живёт в плагине (движок),
    а что setup генерирует в проект; engine-блоки; три оси оркестрации и где каждая описана;
    инварианты, которые держит CI.
-3. [plugins/beerpowers/reference/workspace.md](plugins/beerpowers/reference/workspace.md) (283) —
+3. [plugins/beerpowers/reference/workspace.md](plugins/beerpowers/reference/workspace.md) (312) —
    контракт движка с проектом: ключи `workspace.json` и git-настроек, маркеры engine-блоков
    и правило копий.
    Всё остальное ссылается на эти имена, поэтому их стоит знать до команд и шаблонов.
@@ -28,7 +28,7 @@
    `.claude/team-charter.md`, `.claude/team-lead.md`, одна-две роли из `.claude/agents/`,
    `.claude/settings.json`, `memory/MEMORY.md`. Подробно читать не нужно — достаточно увидеть, какие файлы появляются
    и что в них проектное, а что движковое (текст между маркерами `beerpowers:engine`).
-3. [plugins/beerpowers/commands/setup.md](plugins/beerpowers/commands/setup.md) (430) — как это
+3. [plugins/beerpowers/commands/setup.md](plugins/beerpowers/commands/setup.md) (433) — как это
    собирается: разведка без вопросов, анкета Q0–Q9 темами — по вызову на тему, подтверждение
    плана, генерация по шагам 4.0–4.8, проверка. Git-вопросы — Q9, последней темой; профиль
    предлагает `lib/git.mjs detect`. Барьер `guard-user-files` на время setup — в Critical Rules.
@@ -61,7 +61,7 @@
 1. [plugins/beerpowers/commands/task-start.md](plugins/beerpowers/commands/task-start.md) (249) —
    старт и возобновление: постановка, разбор, класс, артефакты, ветки, dry-run, передача команде.
 2. [plugins/beerpowers/reference/tasks-layout.md](plugins/beerpowers/reference/tasks-layout.md)
-   (127) — что лежит в папке задачи и чем файлы отличаются друг от друга.
+   (130) — что лежит в папке задачи и чем файлы отличаются друг от друга.
 3. [plugins/beerpowers/commands/team-lazy.md](plugins/beerpowers/commands/team-lazy.md) (29) —
    основной режим: роли поднимаются по требованию.
 4. [plugins/beerpowers/reference/git-flow.md](plugins/beerpowers/reference/git-flow.md) (338) —
@@ -71,7 +71,9 @@
    параллельная работа над задачами в отдельных рабочих каталогах.
 6. [plugins/beerpowers/commands/retro.md](plugins/beerpowers/commands/retro.md) (468) — после
    мержа: уроки эпика, дистилляция папок задач в память, уборка.
-7. [plugins/beerpowers/commands/worktrees-clear.md](plugins/beerpowers/commands/worktrees-clear.md)
+7. [plugins/beerpowers/commands/tracker.md](plugins/beerpowers/commands/tracker.md) (35) — запись
+   в трекер по ходу задачи: задача и баг по шаблону, комментарии, связи, статусы.
+8. [plugins/beerpowers/commands/worktrees-clear.md](plugins/beerpowers/commands/worktrees-clear.md)
    (189) и [team-down.md](plugins/beerpowers/commands/team-down.md) (37) — уборка рабочих
    каталогов и остановка ролей.
 
@@ -125,11 +127,11 @@
    копируются в `.claude/bin/` проекта. Шапка каждого — справка (`--help` печатает её же).
    Главные: `git-base.mjs` (база задачи, цель MR, команда диффа) и `lib/git.mjs` под ним,
    `worktree-add` и `workspace-clean` (рабочие деревья и уборка), `yandex-tracker`
-   (постановка из трекера), `cdp-screenshot.mjs` (скриншоты страниц), `workspace-check.mjs` (проверка
+   (постановка из трекера) и `yandex-tracker-write.mjs` (запись в трекер), `cdp-screenshot.mjs` (скриншоты страниц), `workspace-check.mjs` (проверка
    собранного).
 2. [plugins/beerpowers/skills/](plugins/beerpowers/skills/) — скиллы плагина. Процессные —
    `brainstorm`, `grill`, `minimal-diff`, `debug-loop`, `prototype`; рабочие — `page-screenshot`,
-   `economy`, `summarizing-mr-links`.
+   `economy`, `summarizing-mr-links`, `tracker-task`.
 
 ## 📝 9. PM-дорожка
 
