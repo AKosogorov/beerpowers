@@ -103,6 +103,9 @@ jobs:
       - name: Ссылки на скилы резолвятся, имена совпадают с каталогами
         run: python3 .github/scripts/check_skill_refs.py
 
+      - name: Имена engine-блоков в реестре миграций есть в шаблонах
+        run: python3 .github/scripts/check_migration_blocks.py
+
       - name: Правка сгенерированного несёт запись в реестр миграций
         env:
           BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
