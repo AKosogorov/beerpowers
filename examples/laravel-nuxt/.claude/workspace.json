@@ -27,7 +27,13 @@
           "TEMP": "{tmp}",
           "TMPDIR": "{tmp}"
         },
-        "prepare": "sh \"{root}/.claude/bin/testdb-ensure\""
+        "prepare": "sh \"{root}/.claude/bin/testdb-ensure\"",
+        "mutate": {
+          "command": "php vendor/bin/phpunit -c phpunit.xml --no-coverage --colors=never --stop-on-failure {filter}",
+          "check": "php -l \"{file}\"",
+          "link": ["vendor"],
+          "copy": [".env.testing"]
+        }
       }
     }
   }

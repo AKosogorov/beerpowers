@@ -104,6 +104,7 @@ charter, «Память роли»; всё остальное — сюда, по
 | `Метки находок — латиницей` | `.claude/team-charter.md` |
 | `Конца фонового прогона дожидаются отрезками` | `.claude/team-charter.md` |
 | `Полный прогон тестов репозитория — через` | `.claude/team-charter.md` |
+| `Мутационные пробы — через` | `.claude/team-charter.md` |
 | `подмешивает их роли автоматически` | `.claude/team-charter.md` |
 | `Скриншот на диск умеет только свой headless Chrome` | скилл `beerpowers:page-screenshot` |
 | `Комментировать только неочевидное «почему»` | `.claude/team-charter.md` |
