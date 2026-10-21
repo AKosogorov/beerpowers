@@ -74,7 +74,8 @@ has() { printf '%s\n' "$1" | grep -q -- "$2"; }
 copies_clean() {
   for c in "$ws/.claude/.cache/mutants"/*; do
     [ -d "$c" ] || continue
-    [ -z "$(git -C "$c" status --porcelain)" ] || return 1
+    # Ссылка и копия файла — не изменения копии, как и у инструмента: «vendor/» симлинк не ловит.
+    [ -z "$(git -C "$c" status --porcelain -- . ':(exclude)vendor' ':(exclude).env.testing')" ] || return 1
   done
 }
 
