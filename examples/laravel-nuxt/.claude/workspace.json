@@ -14,5 +14,21 @@
   },
   "comments": {
     "excludeDirs": ["projects/shop-frontend/app/api"]
+  },
+  "tests": {
+    "repos": {
+      "shop-backend": {
+        "command": "php vendor/bin/phpunit -c phpunit.xml --colors=never --no-coverage --log-junit \"{junit}\" {files}",
+        "files": ["tests/Unit/**/*Test.php", "tests/Feature/**/*Test.php"],
+        "env": {
+          "DB_DATABASE": "shop_w{i}_test",
+          "TEST_TOKEN": "{i}",
+          "TMP": "{tmp}",
+          "TEMP": "{tmp}",
+          "TMPDIR": "{tmp}"
+        },
+        "prepare": "sh \"{root}/.claude/bin/testdb-ensure\""
+      }
+    }
   }
 }

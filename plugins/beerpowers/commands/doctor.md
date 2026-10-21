@@ -148,6 +148,11 @@ description: Проверить, что команда работает на э�
     - при `ui: true` — `node .claude/bin/cdp-screenshot.mjs --find-chrome` находит браузер; не нашёл →
       **fail**, фикс — путь личной переменной `BEERPOWERS_CHROME` в `env` файла
       `.claude/settings.local.json` (не в `workspace.json`: путь у каждой машины свой);
+    - есть `tests.repos` в `workspace.json` — `node .claude/bin/parallel-tests.mjs --dry-run`
+      кончается кодом 0: маски находят файлы, переменные `{env:…}` на этой машине заданы
+      (схему раздела сверяет `workspace-check`, п. 5; **fail** — строка ошибки и фикс по
+      [`../reference/parallel-tests.md`](../reference/parallel-tests.md)); в выводе — лимит
+      слотов и откуда он; лимит выше числа ядер машины — **warn**;
     - скопирован `make-shim` — `.claude/bin/make-shim --version` отрабатывает (`make` найден);
     - скопирован `yandex-tracker`, `yandex-tracker-write.mjs` или `figma-export` — их `--help` отвечает, а токен в личных
       настройках есть (значение не печатать, только факт наличия);

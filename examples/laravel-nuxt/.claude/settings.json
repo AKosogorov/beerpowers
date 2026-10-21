@@ -68,6 +68,7 @@
       "Bash(node .claude/bin/tech-debt-index.mjs:*)",
       "Bash(node .claude/bin/workspace-check.mjs:*)",
       "Bash(node .claude/bin/token-audit.mjs:*)",
+      "Bash(node .claude/bin/parallel-tests.mjs:*)",
       "Bash(node .claude/bin/cdp-screenshot.mjs:*)",
       "Bash(npm --prefix projects/shop-frontend run:*)",
       "Bash(npm --prefix worktrees/*/shop-frontend run:*)",

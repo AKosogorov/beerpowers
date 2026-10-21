@@ -11,11 +11,13 @@
 // «a\t<ключ>\t<элемент>» (массив, по строке на элемент), «r\t<имя>\t<путь от корня>»
 // (репозиторий). Вторая копия дефолтов на sh разошлась бы с этой молча.
 //
-// Нарушения делятся на два сорта. Фатальное — значение непригодно к использованию: JSON
+// Нарушения делятся на сорта. Фатальное — значение непригодно к использованию: JSON
 // не разбирается, тип не тот, путь выходит за корень. На нём dump падает с кодом 2, потому что
 // скрипт уборки с таким путём в белом списке хуже, чем скрипт, который не запустился.
 // Остальное (нет обязательного ключа, лишний ключ, барьер не на своей строке) скрипты
-// переживают на дефолтах, а называет его workspace-check.mjs.
+// переживают на дефолтах, а называет его workspace-check.mjs. Непригодная запись раздела tests —
+// третий сорт (testsFatal): она останавливает только parallel-tests.mjs, а не каждый скрипт
+// с dump, — сломанная команда тестов не повод отказывать worktree-add.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -27,7 +29,18 @@ export const PROJECTS_DIR = 'projects';
 export const WORKTREES_DIR = 'worktrees';
 export const TASKS_DIR = 'memory/tasks';
 const REQUIRED = ['beerpowers'];
-const KNOWN = [...REQUIRED, 'ui', 'viewports', 'barriers', 'comments'];
+const KNOWN = [...REQUIRED, 'ui', 'viewports', 'barriers', 'comments', 'tests'];
+export const TEST_MODES = ['split', 'native'];
+const TEST_REPO_KEYS = ['mode', 'command', 'files', 'exclude', 'workers', 'env', 'prepare'];
+// Подстановки parallel-tests.mjs. Что где допустимо — по режиму: в native воркеров создаёт
+// фреймворк, поэтому номера слота {i} и списка файлов {files} у тест-команды нет.
+export const TEST_PLACEHOLDERS = ['i', 'n', 'slots', 'repo', 'dir', 'root', 'tmp', 'junit', 'files', 'env'];
+const TEST_DENY = {
+  split: { command: [], env: ['files'], prepare: ['files', 'junit'] },
+  native: { command: ['i', 'files'], env: ['files'], prepare: ['files', 'junit'] },
+};
+export const placeholdersOf = (s) => [...s.matchAll(/\{([a-z]+)(?::([A-Za-z_][A-Za-z0-9_]*))?\}/g)]
+  .map((m) => ({ name: m[1], arg: m[2] }));
 export const DEFAULT_VIEWPORTS = [
   { name: 'mobile', width: 375, height: 667, mobile: true },
   { name: 'desktop', width: 1440, height: 900, mobile: false },
@@ -183,12 +196,104 @@ export function loadWorkspace(root) {
     else if (!repos.some((r) => r.name === m[1])) soft(`comments.excludeDirs: «${d}» — репозитория «${m[1]}» в ${projectsDir}/ нет`);
   }
 
+  const tests = parseTests(json, repos, (msg) => problems.push({ fatal: false, testsFatal: true, msg }), soft);
+
   const config = {
     beerpowers, projectsDir, worktreesDir, tasksDir, ui,
     ...Object.fromEntries(BARRIERS.map((b) => [`barriers.${b}`, barriers[b]])),
     'comments.excludeDirs': excludeDirs,
   };
-  return { root, file, exists, config, viewports, viewportsDefault: !('viewports' in json), repos, problems };
+  return { root, file, exists, config, viewports, viewportsDefault: !('viewports' in json), repos, tests, problems };
+}
+
+// Раздел tests — настройки parallel-tests.mjs: лимит слотов машины по умолчанию и прогон
+// каждого репозитория. Непригодная запись (нет команды, чужая подстановка) прогон
+// останавливает: он запустил бы не те тесты или все тесты в каждом воркере.
+function parseTests(json, repos, fatal, soft) {
+  const empty = { slots: null, repos: {} };
+  if (!('tests' in json)) return empty;
+  const t = json.tests;
+  const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+  if (!isObj(t)) { fatal('tests: ждётся объект'); return empty; }
+  for (const k of Object.keys(t)) if (!['slots', 'repos'].includes(k)) soft(`tests: неизвестный ключ ${k}`);
+  const posInt = (x) => Number.isInteger(x) && x > 0;
+  let slots = null;
+  if ('slots' in t) {
+    if (!posInt(t.slots)) fatal(`tests.slots: ждётся целое больше нуля, получено ${JSON.stringify(t.slots)}`);
+    else slots = t.slots;
+  }
+  const out = {};
+  if (!('repos' in t)) { soft('tests: нет repos — parallel-tests.mjs нечего запускать'); return { slots, repos: out }; }
+  if (!isObj(t.repos)) { fatal('tests.repos: ждётся объект «имя репозитория → настройки прогона»'); return { slots, repos: out }; }
+  for (const [name, e] of Object.entries(t.repos)) {
+    const key = `tests.repos.${name}`;
+    if (!SAFE_NAME.test(name)) { fatal(`${key}: имя репозитория — [A-Za-z0-9_.-]`); continue; }
+    if (!isObj(e)) { fatal(`${key}: ждётся объект`); continue; }
+    if (!repos.some((r) => r.name === name)) soft(`${key}: репозитория «${name}» в ${PROJECTS_DIR}/ нет`);
+    for (const k of Object.keys(e)) if (!TEST_REPO_KEYS.includes(k)) soft(`${key}: неизвестный ключ ${k}`);
+    const mode = e.mode === undefined ? 'split' : e.mode;
+    if (!TEST_MODES.includes(mode)) { fatal(`${key}.mode: ждётся ${TEST_MODES.join(' или ')}`); continue; }
+    let ok = true;
+    const bad = (msg) => { fatal(`${key}${msg}`); ok = false; };
+    const text = (k, v) => {
+      if (typeof v !== 'string' || v.trim() === '') { bad(`.${k}: ждётся непустая строка`); return false; }
+      if (/[\r\n]/.test(v)) { bad(`.${k}: перевод строки в значении`); return false; }
+      return true;
+    };
+    const holders = (k, v, field) => {
+      for (const p of placeholdersOf(v)) {
+        if (!TEST_PLACEHOLDERS.includes(p.name)) bad(`.${k}: неизвестная подстановка {${p.name}}`);
+        else if (TEST_DENY[mode][field].includes(p.name)) bad(`.${k}: {${p.name}} в режиме ${mode} не подставляется`);
+        else if (p.name === 'env' && !p.arg) bad(`.${k}: {env} без имени переменной — {env:ИМЯ}`);
+      }
+    };
+    if (!('command' in e)) bad('.command: нет команды прогона');
+    else if (text('command', e.command)) {
+      holders('command', e.command, 'command');
+      if (mode === 'split' && !placeholdersOf(e.command).some((p) => p.name === 'files')) {
+        bad('.command: в режиме split нет {files} — каждый воркер прогнал бы все тесты');
+      }
+    }
+    const list = (k) => {
+      if (!(k in e)) return [];
+      const v = e[k];
+      if (!Array.isArray(v) || v.some((x) => typeof x !== 'string' || x === '')) { bad(`.${k}: ждётся массив масок`); return []; }
+      for (const x of v) {
+        if (x.startsWith('/') || /^[A-Za-z]:/.test(x) || x.split('/').includes('..')) bad(`.${k}: «${x}» — маска выходит за репозиторий`);
+        if (x.includes('\\')) bad(`.${k}: «${x}» — разделитель путей прямой слэш`);
+      }
+      return v;
+    };
+    const files = list('files');
+    const exclude = list('exclude');
+    if (mode === 'split' && files.length === 0) bad('.files: в режиме split нужна маска тестовых файлов');
+    if (mode === 'native') for (const k of ['files', 'exclude']) if (k in e) soft(`${key}.${k}: в режиме native не читается — набор файлов задаёт конфиг фреймворка`);
+    let workers = null;
+    if ('workers' in e) {
+      if (!posInt(e.workers)) bad(`.workers: ждётся целое больше нуля`);
+      else workers = e.workers;
+    }
+    const env = {};
+    if ('env' in e) {
+      if (!isObj(e.env)) bad('.env: ждётся объект «переменная → значение»');
+      else {
+        for (const [k, v] of Object.entries(e.env)) {
+          if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(k)) { bad(`.env: «${k}» — не имя переменной`); continue; }
+          if (typeof v !== 'string' || /[\r\n]/.test(v)) { bad(`.env.${k}: ждётся строка в одну строку`); continue; }
+          holders(`env.${k}`, v, 'env');
+          env[k] = v;
+        }
+      }
+    }
+    let prepare = null;
+    if ('prepare' in e && text('prepare', e.prepare)) { holders('prepare', e.prepare, 'prepare'); prepare = e.prepare; }
+    const all = [e.command, ...Object.values(env)].filter((v) => typeof v === 'string');
+    if (ok && !all.some((v) => placeholdersOf(v).some((p) => p.name === 'junit'))) {
+      soft(`${key}: нет {junit} ни в команде, ни в env — счёт тестов и раскладка по времени недоступны`);
+    }
+    if (ok) out[name] = { mode, command: e.command, files, exclude, workers, env, prepare };
+  }
+  return { slots, repos: out };
 }
 
 function dump(root) {
