@@ -58,7 +58,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Штамп** `generated-by: beerpowers v<версия> · mode: plugin-linked` в шапке charter и ключ `beerpowers` в `workspace.json`: пишет setup, читают `hooks/session-start.sh` (детектор дрейфа, в том числе charter со штампом `qtim v…`), `/beerpowers:update` и `/beerpowers:doctor`. Формат менять только синхронно во всех точках.
 - **Контракт** — `plugins/beerpowers/reference/workspace.md`: схема `workspace.json`, engine-блоки и таблица слияния, правило копий. Новый ключ, новая форма маркера, новая копия — сначала там.
 - **Backward-tolerant движок:** новое ожидание движка от проекта — всегда с fallback на дефолт контракта.
-- **Правка, меняющая сгенерированное** (`templates/**`, структура charter в setup 4.1, settings-baseline), обязана: добавить запись `## → <версия>` в `reference/migrations.md`, строку «update: требуется/рекомендуется» в CHANGELOG и минорный бамп. Первое проверяет CI (`check_migrations.py`).
+- **Правка, меняющая сгенерированное** (`templates/**`, структура charter в setup 4.1, settings-baseline), обязана: добавить запись `## → <версия>` в `reference/migrations.md` с именем каждого изменённого engine-блока, строку «update: требуется/рекомендуется» в CHANGELOG и минорный бамп. Запись и имена блоков проверяет CI (`check_migrations.py`, `check_migration_blocks.py`).
 
 ## Прочие инварианты контента
 

@@ -12,6 +12,10 @@
   * требуется, чтобы `reference/migrations.md` был в том же диффе и содержал заголовок
     `## → <версия из plugin.json>`.
 
+Запись называет каждый изменённый engine-блок: имя блока, чьё содержимое в диффе отличается
+от базы (или блок появился, или исчез), стоит в записи в обратных кавычках. update сливает
+по записи: блок, которого запись не называет, выглядит в проекте как правка руками.
+
 База: аргумент CLI → $CHECK_MIGRATIONS_BASE → origin/main → HEAD (локальный прогон
 незакоммиченного). Untracked-файлы в триггерных путях тоже считаются изменениями —
 иначе новый шаблон роли проехал бы мимо проверки.
@@ -29,11 +33,14 @@ PLUGIN_JSON = "plugins/beerpowers/.claude-plugin/plugin.json"
 PHASE_START = re.compile(r"^## Phase 4: Generation\s*$")
 PHASE_END = re.compile(r"^## Phase 5\b")
 HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
+ENGINE_BLOCK = re.compile(
+    r"<!-- beerpowers:engine ([a-z0-9-]+)(?: [^>]*)? -->(.*?)<!-- /beerpowers:engine -->", re.S
+)
 
 
 def git(*args):
     result = subprocess.run(
-        ["git", *args], capture_output=True, text=True, check=False
+        ["git", *args], capture_output=True, text=True, encoding="utf-8", check=False
     )
     return result.stdout if result.returncode == 0 else ""
 
@@ -102,6 +109,39 @@ def setup_phase4_touched(base):
     return False
 
 
+def engine_blocks(text):
+    return {name: body for name, body in ENGINE_BLOCK.findall(text)}
+
+
+def changed_blocks(base, paths):
+    """(файл, имя) engine-блоков, чьё содержимое отличается от базы.
+
+    Файл без блоков на базе — новый или ещё без разметки (перевод с qtim в 2.0.0): update
+    не сливает его по блокам, и запись описывает файл целиком, а не блоки.
+    """
+    result = []
+    for path in paths:
+        old = engine_blocks(git("show", f"{base}:{path}"))
+        if not old:
+            continue
+        current = pathlib.Path(path)
+        new = engine_blocks(current.read_text(encoding="utf-8")) if current.is_file() else {}
+        for name in sorted(set(old) | set(new)):
+            if old.get(name) != new.get(name):
+                result.append((path, name))
+    return result
+
+
+def entry_text(migrations_text, entry):
+    """Текст записи от её заголовка до следующего заголовка второго уровня."""
+    start = migrations_text.find(entry)
+    if start < 0:
+        return ""
+    rest = migrations_text[start + len(entry):]
+    end = re.search(r"^## ", rest, re.M)
+    return rest[: end.start()] if end else rest
+
+
 def main():
     base = resolve_base()
     # База не резолвится (обрезанная история, нулевой sha первого пуша) — падаем явно:
@@ -138,6 +178,15 @@ def main():
             f"в {MIGRATIONS} нет записи «{entry}» под текущую версию плагина "
             f"(она в {PLUGIN_JSON}) — добавь её или забампай версию"
         )
+    else:
+        text = entry_text(migrations_text, entry)
+        template_paths = [f for f in triggers if f.startswith(TEMPLATES_PREFIX)]
+        for path, name in changed_blocks(base, template_paths):
+            if f"`{name}`" not in text:
+                problems.append(
+                    f"engine-блок `{name}` в {path} изменён, а запись «{entry}» его не называет — "
+                    f"update не узнает, откуда разница в проекте"
+                )
 
     if problems:
         print("Изменено сгенерированное:")
