@@ -101,8 +101,8 @@ installStopHandlers();
 
 // ---------- git ----------
 
-function git(cwd, args, { env, allowFail } = {}) {
-  const r = spawnSync('git', ['-C', cwd, ...args], { encoding: 'utf8', env: env ?? process.env, windowsHide: true, maxBuffer: 64 << 20 });
+function git(cwd, args, { env, allowFail, input } = {}) {
+  const r = spawnSync('git', ['-C', cwd, ...args], { encoding: 'utf8', env: env ?? process.env, input, windowsHide: true, maxBuffer: 64 << 20 });
   if (r.status !== 0 && !allowFail) fail(`git -C ${cwd} ${args.join(' ')}: ${(r.stderr || r.stdout || '').trim()}`);
   return allowFail ? r : r.stdout;
 }
@@ -184,9 +184,9 @@ function prepareCopy({ root, repo, base, slot, cfg }) {
   const own = [...cfg.mutate.link, ...cfg.mutate.copy];
   const head = git(base, ['rev-parse', 'HEAD']).trim();
   if (fs.existsSync(copy)) {
-    const own = git(copy, ['rev-parse', '--path-format=absolute', '--git-common-dir'], { allowFail: true });
+    const mine = git(copy, ['rev-parse', '--path-format=absolute', '--git-common-dir'], { allowFail: true });
     const theirs = git(base, ['rev-parse', '--path-format=absolute', '--git-common-dir']).trim();
-    if (own.status !== 0 || !sameDir(own.stdout.trim(), theirs)) fail(`${copy}: не копия ${repo} — node .claude/bin/mutants.mjs --clean`);
+    if (mine.status !== 0 || !sameDir(mine.stdout.trim(), theirs)) fail(`${copy}: не копия ${repo} — node .claude/bin/mutants.mjs --clean`);
     git(copy, ['checkout', '-q', '--detach', '--force', head]);
     cleanCopy(copy, own);
   } else {
@@ -225,7 +225,7 @@ function prepareCopy({ root, repo, base, slot, cfg }) {
     else if (!st) fs.rmSync(dest, { force: true });
   }
   if (dirty.length) {
-    git(copy, ['add', '-A', ...outside(own)]);
+    git(copy, ['add', '-A', '--pathspec-from-file=-', '--pathspec-file-nul'], { input: dirty.join('\0') });
     const tree = git(copy, ['write-tree']).trim();
     const who = { GIT_AUTHOR_NAME: 'beerpowers', GIT_AUTHOR_EMAIL: 'mutants@localhost', GIT_COMMITTER_NAME: 'beerpowers', GIT_COMMITTER_EMAIL: 'mutants@localhost' };
     const commit = git(copy, ['commit-tree', tree, '-p', 'HEAD', '-m', 'mutants: снимок рабочего дерева базы'], { env: { ...process.env, ...who } }).trim();
