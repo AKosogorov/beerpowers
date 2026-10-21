@@ -153,6 +153,11 @@ description: Проверить, что команда работает на э�
       (схему раздела сверяет `workspace-check`, п. 5; **fail** — строка ошибки и фикс по
       [`../reference/parallel-tests.md`](../reference/parallel-tests.md)); в выводе — лимит
       слотов и откуда он; лимит выше числа ядер машины — **warn**;
+    - есть `tests.repos.<репо>.mutate` — каталоги `mutate.link` и файлы `mutate.copy` есть
+      в `projects/<репо>` (**fail** иначе: копия мутанта не соберётся), `git -C projects/<репо>
+      check-ignore` видит каждый из них (**fail** иначе); копия в
+      `.claude/.cache/mutants/` репозитория без `mutate` — **warn** с фиксом
+      `node .claude/bin/mutants.mjs --clean`;
     - скопирован `make-shim` — `.claude/bin/make-shim --version` отрабатывает (`make` найден);
     - скопирован `yandex-tracker`, `yandex-tracker-write.mjs` или `figma-export` — их `--help` отвечает, а токен в личных
       настройках есть (значение не печатать, только факт наличия);

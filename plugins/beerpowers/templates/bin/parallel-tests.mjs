@@ -52,12 +52,13 @@
 // прогона; свои процессы скрипт гасит по своим PID, если его остановили.
 
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { spawn, spawnSync } from 'node:child_process';
-import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { findRoot, loadWorkspace, PROJECTS_DIR, WORKTREES_DIR } from './lib/workspace.mjs';
+import {
+  UserError, say, fail, SLOTS_DIR, slotLimit, locked, scan, acquire, release, killChildren,
+  installStopHandlers, run as runIn, subst, quote,
+} from './lib/slots.mjs';
 
 const self = fileURLToPath(import.meta.url);
 const argv = process.argv.slice(2);
@@ -69,9 +70,7 @@ if (argv.includes('-h') || argv.includes('--help')) {
   process.exit(0);
 }
 
-class UserError extends Error {}
-const say = (s) => process.stdout.write(s + '\n');
-const fail = (msg) => { throw new UserError(msg); };
+const run = (command, o) => runIn(command, { ...o, tool: 'parallel-tests' });
 
 const opts = { repos: null, task: null, workers: null, out: null, dryRun: false, status: false };
 
@@ -97,154 +96,9 @@ function parseArgs() {
   if (opts.task !== null && !/^[A-Za-z0-9_][A-Za-z0-9_.-]*$/.test(opts.task)) fail(`--task: «${opts.task}» — не код задачи`);
 }
 
-// ---------- слоты машины ----------
+installStopHandlers();
 
-// Не os.tmpdir(): временный каталог процесса переопределяют песочница сессии и сам этот
-// скрипт для воркеров, а семафор обязан быть одним для всех сессий машины.
-const SLOTS_DIR = process.env.BEERPOWERS_TEST_SLOTS_DIR
-  || (process.platform === 'win32'
-    ? path.join(process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Temp') : os.tmpdir(), 'beerpowers-test-slots')
-    : path.join('/tmp', `beerpowers-test-slots-${typeof process.getuid === 'function' ? process.getuid() : 'user'}`));
-const LOCK_STALE_MS = 10_000;
-const mine = new Set();
-
-const alive = (pid) => {
-  try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; }
-};
-
-// Захват слота — файл slot-<номер> с PID владельца. Осмотр и захват идут под замком-каталогом:
-// без него два прогона, увидев один протухший захват, оба сочли бы слот своим.
-async function locked(fn) {
-  fs.mkdirSync(SLOTS_DIR, { recursive: true });
-  const lock = path.join(SLOTS_DIR, '.lock');
-  for (;;) {
-    try { fs.mkdirSync(lock); break; } catch (e) {
-      if (e.code !== 'EEXIST') throw e;
-      try {
-        if (Date.now() - fs.statSync(lock).mtimeMs > LOCK_STALE_MS) { fs.rmdirSync(lock); continue; }
-      } catch { /* замок сняли между проверками */ }
-      await sleep(25);
-    }
-  }
-  try { return fn(); } finally { try { fs.rmdirSync(lock); } catch { /* уже снят */ } }
-}
-
-function scan({ clean }) {
-  const held = new Map();
-  let names = [];
-  try { names = fs.readdirSync(SLOTS_DIR); } catch { return held; }
-  for (const f of names) {
-    const m = f.match(/^slot-(\d+)$/);
-    if (!m) continue;
-    const p = path.join(SLOTS_DIR, f);
-    let c = null;
-    try { c = JSON.parse(fs.readFileSync(p, 'utf8')); } catch { /* битый захват — протух */ }
-    if (c && Number.isInteger(c.pid) && alive(c.pid)) { held.set(Number(m[1]), c); continue; }
-    if (clean) {
-      try { fs.unlinkSync(p); say(`STALE ${f} pid=${c?.pid ?? '?'} — процесс мёртв, захват убран`); } catch { /* убрал сосед */ }
-    }
-  }
-  return held;
-}
-
-async function acquire(want, limit, meta, label) {
-  let waited = 0;
-  for (;;) {
-    const got = await locked(() => {
-      const held = scan({ clean: true });
-      const free = limit.n - held.size;
-      if (free <= 0) return { busy: held.size };
-      const ids = [];
-      for (let s = 1; ids.length < Math.min(want, free); s++) {
-        if (held.has(s)) continue;
-        const claim = { pid: process.pid, ...meta, since: new Date().toISOString() };
-        try {
-          fs.writeFileSync(path.join(SLOTS_DIR, `slot-${s}`), JSON.stringify(claim), { flag: 'wx' });
-        } catch (e) {
-          if (e.code === 'EEXIST') continue; // протухший захват не удалось убрать — слот пропускается
-          throw e;
-        }
-        mine.add(s);
-        ids.push(s);
-      }
-      return { ids };
-    });
-    if (got.ids) return got.ids;
-    if (waited % 60 === 0) say(`WAIT ${label}: свободных слотов нет — заняты ${got.busy} из ${limit.n} (${limit.from}), жду${waited ? ` ${waited} с` : ''}`);
-    await sleep(1000);
-    waited++;
-  }
-}
-
-function release(ids) {
-  for (const s of ids) {
-    const p = path.join(SLOTS_DIR, `slot-${s}`);
-    try {
-      if (JSON.parse(fs.readFileSync(p, 'utf8')).pid === process.pid) fs.unlinkSync(p);
-    } catch { /* захвата уже нет */ }
-    mine.delete(s);
-  }
-}
-
-// ---------- процессы ----------
-
-const children = new Set();
-
-function killChildren() {
-  for (const c of children) {
-    if (!c.pid) continue;
-    if (process.platform === 'win32') spawnSync('taskkill', ['/pid', String(c.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
-    else { try { process.kill(-c.pid, 'SIGTERM'); } catch { /* группа уже вышла */ } }
-  }
-}
-
-process.on('exit', () => release([...mine]));
-for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
-  process.on(sig, () => {
-    say(`STOP ${sig}: гашу воркеры по своим PID`);
-    killChildren();
-    release([...mine]);
-    say('CODE=130');
-    process.exit(130);
-  });
-}
-
-function run(command, { cwd, env, log }) {
-  fs.writeSync(log, `\n$ ${command}\n`);
-  return new Promise((resolve) => {
-    let child;
-    try {
-      // detached на POSIX — своя группа процессов: так гасится и всё, что запустила оболочка.
-      child = spawn(command, { cwd, env, shell: true, stdio: ['ignore', log, log], windowsHide: true, detached: process.platform !== 'win32' });
-    } catch (e) {
-      fs.writeSync(log, `parallel-tests: запуск не удался: ${e.message}\n`);
-      resolve(127);
-      return;
-    }
-    children.add(child);
-    child.on('error', (e) => { fs.writeSync(log, `parallel-tests: запуск не удался: ${e.message}\n`); });
-    child.on('close', (code, signal) => {
-      children.delete(child);
-      fs.writeSync(log, `\n# код выхода ${code ?? signal}\n`);
-      resolve(code ?? 1);
-    });
-  });
-}
-
-// ---------- подстановки, маски, junit ----------
-
-function subst(s, vars) {
-  return s.replace(/\{([a-z]+)(?::([A-Za-z_][A-Za-z0-9_]*))?\}/g, (m, name, arg) => {
-    if (name === 'env') {
-      const v = process.env[arg];
-      if (v === undefined) fail(`переменная окружения ${arg} не задана — личное значение машины кладут в env файла .claude/settings.local.json`);
-      return v;
-    }
-    return name in vars ? String(vars[name]) : m;
-  });
-}
-
-const quote = (f) => (/[\s"&|<>^()%!;]/.test(f) ? `"${f}"` : f);
+// ---------- маски, junit ----------
 
 function globRe(mask) {
   let re = '';
@@ -588,14 +442,7 @@ async function main() {
   if (fatals.length) fail(fatals.map((p) => `.claude/workspace.json: ${p.msg}`).join('\n'));
   const rel = (p) => path.relative(root, p).replace(/\\/g, '/');
 
-  let limit;
-  const own = process.env.BEERPOWERS_TEST_SLOTS;
-  if (own) {
-    const n = Number(own);
-    if (!Number.isInteger(n) || n < 1) fail(`BEERPOWERS_TEST_SLOTS=${own} — ждётся целое больше нуля`);
-    limit = { n, from: 'BEERPOWERS_TEST_SLOTS' };
-  } else if (ws.tests.slots) limit = { n: ws.tests.slots, from: 'tests.slots' };
-  else limit = { n: os.availableParallelism(), from: 'число ядер' };
+  const limit = slotLimit(ws);
 
   if (opts.status) {
     const held = await locked(() => scan({ clean: false }));

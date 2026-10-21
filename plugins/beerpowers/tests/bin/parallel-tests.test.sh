@@ -103,8 +103,9 @@ if has "$out" 'по времени из junit' && has "$out" 'files=1 оценк
 else ko "по junit — жадно по времени, тяжёлый файл один в группе" "$out"; fi
 
 # 5. Длинная командная строка режется на несколько запусков в одном воркере.
-len=$(BEERPOWERS_TEST_SLOTS=1 pt --repos demo --dry-run | sed -n 's/.*run 1\/1 (длина \([0-9]*\) .*/\1/p')
-out=$(BEERPOWERS_TEST_CMDLINE_MAX=$((len - 1)) BEERPOWERS_TEST_SLOTS=1 pt --repos demo --dry-run)
+# Каталог прогона задан явно: в имени по умолчанию стоит PID, и его длина плавает между вызовами.
+len=$(BEERPOWERS_TEST_SLOTS=1 pt --repos demo --dry-run --out "$(native "$tmp/o")" | sed -n 's/.*run 1\/1 (длина \([0-9]*\) .*/\1/p')
+out=$(BEERPOWERS_TEST_CMDLINE_MAX=$((len - 1)) BEERPOWERS_TEST_SLOTS=1 pt --repos demo --dry-run --out "$(native "$tmp/o")")
 if [ -n "$len" ] && has "$out" 'run 1/2 ' && has "$out" 'run 2/2 '; then
   ok "команда длиннее предела — несколько запусков подряд"
 else ko "команда длиннее предела — несколько запусков подряд" "$out"; fi
