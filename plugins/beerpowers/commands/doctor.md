@@ -154,8 +154,8 @@ description: Проверить, что команда работает на э�
       [`../reference/parallel-tests.md`](../reference/parallel-tests.md)); в выводе — лимит
       слотов и откуда он; лимит выше числа ядер машины — **warn**;
     - есть `tests.repos.<репо>.mutate` — каталоги `mutate.link` и файлы `mutate.copy` есть
-      в `projects/<репо>` (**fail** иначе: копия мутанта не соберётся), `git -C projects/<репо>
-      check-ignore` видит каждый из них (**fail** иначе); копия в
+      в `projects/<репо>` (**fail** иначе: копия мутанта не соберётся), файл `mutate.copy` не
+      отслеживается git (**fail** иначе: `git -C projects/<репо> ls-files <файл>` непуст); копия в
       `.claude/.cache/mutants/` репозитория без `mutate` — **warn** с фиксом
       `node .claude/bin/mutants.mjs --clean`;
     - скопирован `make-shim` — `.claude/bin/make-shim --version` отрабатывает (`make` найден);

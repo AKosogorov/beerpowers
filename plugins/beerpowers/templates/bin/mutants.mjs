@@ -107,9 +107,14 @@ function git(cwd, args, { env, allowFail } = {}) {
   return allowFail ? r : r.stdout;
 }
 
+// Ссылки и копии файлов в копии дерева — не изменения: шаблон «vendor/» в .gitignore симлинк
+// не ловит (на Linux и macOS это не каталог), поэтому они исключаются из status, add и clean явно.
+const outside = (own) => ['--', '.', ...own.map((p) => `:(exclude)${p}`)];
+const cleanCopy = (copy, own) => git(copy, ['clean', '-fdq', ...own.flatMap((p) => ['-e', `/${p}`])]);
+
 // Пути из porcelain -z: «XY путь\0», у переименования за ним — старый путь отдельной записью.
-function dirtyPaths(dir) {
-  const out = git(dir, ['status', '--porcelain=v1', '-z', '-uall']);
+function dirtyPaths(dir, own = []) {
+  const out = git(dir, ['status', '--porcelain=v1', '-z', '-uall', ...outside(own)]);
   const parts = out.split('\0').filter(Boolean);
   const paths = [];
   for (let k = 0; k < parts.length; k++) {
@@ -176,13 +181,14 @@ async function clean(root) {
 
 function prepareCopy({ root, repo, base, slot, cfg }) {
   const copy = path.join(COPIES(root), `${repo}-s${slot}`);
+  const own = [...cfg.mutate.link, ...cfg.mutate.copy];
   const head = git(base, ['rev-parse', 'HEAD']).trim();
   if (fs.existsSync(copy)) {
     const own = git(copy, ['rev-parse', '--path-format=absolute', '--git-common-dir'], { allowFail: true });
     const theirs = git(base, ['rev-parse', '--path-format=absolute', '--git-common-dir']).trim();
     if (own.status !== 0 || !sameDir(own.stdout.trim(), theirs)) fail(`${copy}: не копия ${repo} — node .claude/bin/mutants.mjs --clean`);
     git(copy, ['checkout', '-q', '--detach', '--force', head]);
-    git(copy, ['clean', '-fdq']);
+    cleanCopy(copy, own);
   } else {
     fs.mkdirSync(path.dirname(copy), { recursive: true });
     git(base, ['worktree', 'add', '-q', '--detach', copy, head]);
@@ -199,20 +205,17 @@ function prepareCopy({ root, repo, base, slot, cfg }) {
     if (cur) fs.unlinkSync(dest);
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     fs.symlinkSync(target, dest, 'junction');
-    if (git(copy, ['check-ignore', '-q', p], { allowFail: true }).status !== 0) {
-      fail(`${repo}: mutate.link «${p}» не под .gitignore — копия видела бы ссылку изменением`);
-    }
   }
   for (const p of cfg.mutate.copy) {
     const src = path.join(base, p);
     if (!fs.existsSync(src)) fail(`${repo}: mutate.copy «${p}» — в ${base} такого файла нет`);
+    if (git(base, ['ls-files', '--error-unmatch', '--', p], { allowFail: true }).status === 0) fail(`${repo}: mutate.copy «${p}» отслеживается git — копия дерева получает его и так`);
     fs.mkdirSync(path.dirname(path.join(copy, p)), { recursive: true });
     fs.copyFileSync(src, path.join(copy, p));
   }
   // Незакоммиченные правки базы (тесты задачи часто ещё не в коммите) — снимком в копию:
   // мутант мерит то дерево, которое видит роль, а чистота копии сверяется с этим снимком.
-  const skip = new Set([...cfg.mutate.link, ...cfg.mutate.copy]);
-  const dirty = dirtyPaths(base).filter((p) => !skip.has(p));
+  const dirty = dirtyPaths(base, own);
   for (const p of dirty) {
     const src = path.join(base, p);
     const dest = path.join(copy, p);
@@ -222,13 +225,13 @@ function prepareCopy({ root, repo, base, slot, cfg }) {
     else if (!st) fs.rmSync(dest, { force: true });
   }
   if (dirty.length) {
-    git(copy, ['add', '-A']);
+    git(copy, ['add', '-A', ...outside(own)]);
     const tree = git(copy, ['write-tree']).trim();
     const who = { GIT_AUTHOR_NAME: 'beerpowers', GIT_AUTHOR_EMAIL: 'mutants@localhost', GIT_COMMITTER_NAME: 'beerpowers', GIT_COMMITTER_EMAIL: 'mutants@localhost' };
     const commit = git(copy, ['commit-tree', tree, '-p', 'HEAD', '-m', 'mutants: снимок рабочего дерева базы'], { env: { ...process.env, ...who } }).trim();
     git(copy, ['update-ref', '--no-deref', 'HEAD', commit]);
   }
-  const left = dirtyPaths(copy);
+  const left = dirtyPaths(copy, own);
   if (left.length) fail(`${repo}: копия после снимка не чистая: ${left.slice(0, 5).join(', ')}`);
   return copy;
 }
@@ -494,12 +497,13 @@ async function runJob(job, slot, { root, runsDir, copies }, mutant) {
     }
   } finally {
     if (mutant) git(copy, ['checkout', '-q', '--', mutant.file]);
-    let left = dirtyPaths(copy);
+    const own = [...cfg.mutate.link, ...cfg.mutate.copy];
+    let left = dirtyPaths(copy, own);
     if (left.length) {
       fs.writeSync(log, `# копия не чистая после отката: ${left.join(', ')} — восстанавливаю\n`);
       git(copy, ['checkout', '-q', '--', '.']);
-      git(copy, ['clean', '-fdq']);
-      left = dirtyPaths(copy);
+      cleanCopy(copy, own);
+      left = dirtyPaths(copy, own);
       if (left.length) { fs.closeSync(log); fail(`копия ${copy} не восстановилась: ${left.slice(0, 5).join(', ')}`); }
     }
     fs.closeSync(log);
