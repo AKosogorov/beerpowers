@@ -127,8 +127,8 @@
    копируются в `.claude/bin/` проекта. Шапка каждого — справка (`--help` печатает её же).
    Главные: `git-base.mjs` (база задачи, цель MR, команда диффа) и `lib/git.mjs` под ним,
    `worktree-add` и `workspace-clean` (рабочие деревья и уборка), `yandex-tracker`
-   (постановка из трекера) и `yandex-tracker-write.mjs` (запись в трекер), `cdp-screenshot.mjs` (скриншоты страниц), `workspace-check.mjs` (проверка
-   собранного).
+   (постановка из трекера) и `yandex-tracker-write.mjs` (запись в трекер), `cdp-screenshot.mjs` (скриншоты страниц), `parallel-tests.mjs` (полный прогон тестов
+   несколькими процессами с лимитом на машину), `workspace-check.mjs` (проверка собранного).
 2. [plugins/beerpowers/skills/](plugins/beerpowers/skills/) — скиллы плагина. Процессные —
    `brainstorm`, `grill`, `minimal-diff`, `debug-loop`, `prototype`; рабочие — `page-screenshot`,
    `economy`, `summarizing-mr-links`, `tracker-task`.

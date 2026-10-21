@@ -89,6 +89,9 @@ jobs:
       - name: workspace-check — файлы, которые создают команды плагина позже, не битые ссылки
         run: sh plugins/beerpowers/tests/bin/workspace-check.test.sh
 
+      - name: parallel-tests — раскладка, слоты машины, подстановки, native, итоговые строки
+        run: sh plugins/beerpowers/tests/bin/parallel-tests.test.sh
+
       - name: Workflow-скрипты синтаксически валидны
         run: node .github/scripts/check_workflows.mjs plugins/beerpowers/workflows/*.mjs
 
