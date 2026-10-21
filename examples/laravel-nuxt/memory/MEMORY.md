@@ -102,7 +102,7 @@ charter, «Память роли»; всё остальное — сюда, по
 | `Процессы гасятся только по своему PID` | `.claude/team-charter.md` |
 | `Шкала находок — только из charter` | `.claude/team-charter.md` |
 | `Метки находок — латиницей` | `.claude/team-charter.md` |
-| `Конца фонового прогона дожидаются одним блокирующим вызовом` | `.claude/team-charter.md` |
+| `Конца фонового прогона дожидаются отрезками` | `.claude/team-charter.md` |
 | `подмешивает их роли автоматически` | `.claude/team-charter.md` |
 | `Скриншот на диск умеет только свой headless Chrome` | скилл `beerpowers:page-screenshot` |
 | `Комментировать только неочевидное «почему»` | `.claude/team-charter.md` |
