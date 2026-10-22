@@ -197,6 +197,22 @@ if [ "$code" = 0 ] && has "$out" '^r	demo	projects/demo$'; then
   ok "сломанный tests не роняет dump остальных скриптов"
 else ko "сломанный tests не роняет dump остальных скриптов (код $code)" "$out"; fi
 
+# 15. Строка START несёт коммит прогона: свой репозиторий — head=<sha> и tree=clean|dirty,
+# каталог без своего репозитория — head=? (коммит внешнего репозитория не подставляется).
+write_ws "node \\\"$runner\\\" \\\"{junit}\\\" {files}"
+rm -rf "$ws/projects/other/.git"
+git -C "$ws/projects/other" init -q && git -C "$ws/projects/other" add -A   && git -C "$ws/projects/other" -c user.name=t -c user.email=t@t -c commit.gpgsign=false commit -qm init
+sha=$(git -C "$ws/projects/other" rev-parse HEAD)
+out=$(BEERPOWERS_TEST_SLOTS=2 pt --repos other,demo)
+printf 'x
+' > "$ws/projects/other/new.txt"
+out2=$(BEERPOWERS_TEST_SLOTS=2 pt --repos other)
+if has "$out" "^START other .*head=$sha tree=clean " && has "$out" '^START demo .*head=? tree=? '   && has "$out2" "^START other .*head=$sha tree=dirty "; then
+  ok "START — коммит прогона и чистота дерева, без своего репозитория — head=?"
+else ko "START — коммит прогона и чистота дерева, без своего репозитория — head=?" "$out
+---
+$out2"; fi
+
 echo
 echo "$total случаев, упало $failed"
 [ "$failed" = 0 ]
