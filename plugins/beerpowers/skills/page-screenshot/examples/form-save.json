@@ -1,0 +1,65 @@
+{
+  "baseUrl": "http://localhost:3000",
+  "mocks": [
+    {
+      "url": "*/api/offices",
+      "method": "GET",
+      "mergePatch": { "meta": { "source": "mock" }, "offices": [{ "city": "Казань" }, { "city": "Воронеж" }, { "city": "Тюмень" }] }
+    }
+  ],
+  "scenarios": [
+    {
+      "name": "save-blocked",
+      "viewport": "*",
+      "steps": [
+        { "goto": "/edit" },
+        { "type": "input[name=email]", "text": "admin@localhost" },
+        { "type": "input[name=password]", "text": "password" },
+        { "click": "button[type=submit]", "hasText": "Войти" },
+        { "wait": { "selector": "#offices li" } },
+        { "type": "input[name=latitude]", "text": "55.75" },
+        { "type": "input[name=longitude]", "text": "" },
+        { "click": "button[type=submit]", "hasText": "Сохранить" },
+        { "wait": { "expr": "document.activeElement?.name === 'longitude'" } },
+        { "capture": { "pairMessage": "document.querySelector('[name=longitude]').validationMessage" } },
+        { "wait": { "networkIdle": 300 } }
+      ],
+      "state": {
+        "url": "location.href",
+        "offices": "[...document.querySelectorAll('#offices li')].map(li => li.textContent)",
+        "source": "document.getElementById('offices').dataset.source"
+      }
+    },
+    {
+      "name": "save-ok",
+      "viewport": "*",
+      "steps": [
+        { "goto": "/edit" },
+        { "type": "input[name=email]", "text": "admin@localhost" },
+        { "type": "input[name=password]", "text": "password" },
+        { "click": "button[type=submit]", "hasText": "Войти" },
+        { "wait": { "selector": "#offices li" } },
+        { "type": "input[name=latitude]", "text": "55.75" },
+        { "type": "input[name=longitude]", "text": "37.61" },
+        { "click": "button[type=submit]", "hasText": "Сохранить" },
+        { "wait": { "selector": ".toast", "hasText": "Сохранено" } },
+        { "screenshot": "tester-office-saved-{width}.png" }
+      ],
+      "state": { "url": "location.href" }
+    },
+    {
+      "name": "offices-empty",
+      "width": 1440,
+      "height": 900,
+      "mocks": [{ "url": "*/api/offices", "json": { "offices": [], "meta": { "source": "mock-empty" } } }],
+      "steps": [
+        { "goto": "/edit" },
+        { "type": "input[name=email]", "text": "admin@localhost" },
+        { "type": "input[name=password]", "text": "password" },
+        { "press": "Enter" },
+        { "wait": { "selector": "#offices .empty", "hasText": "Офисов нет" } }
+      ],
+      "state": { "source": "document.getElementById('offices').dataset.source" }
+    }
+  ]
+}

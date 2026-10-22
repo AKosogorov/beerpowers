@@ -136,8 +136,8 @@ description: Проверить, что команда работает на э�
 15. **Машина** — всё установленное запускается здесь, а не только лежит на диске. Прогоняется
     на каждой машине команды отдельно (вторая машина, новый коллега): копии одинаковые,
     а окружение — нет. Каждая строка — pass/fail с командой, которой проверено:
-    - `node --version` — 22 или новее (**fail** ниже: `cdp-screenshot.mjs` и `workspace-check.mjs`
-      держатся на встроенных `fetch` и `WebSocket`);
+    - `node --version` — 22 или новее (**fail** ниже: `cdp-screenshot.mjs`, `cdp-run.mjs` и
+      `workspace-check.mjs` держатся на встроенных `fetch` и `WebSocket`);
     - `git --version`, `bash --version`, `sh -c 'exit 0'` — на них стоят скрипты `.claude/bin/`
       и хуки; на Windows это Git Bash;
     - каждый shell-скрипт `.claude/bin/*` отвечает на `--help` кодом 0 — так ловятся и битый
