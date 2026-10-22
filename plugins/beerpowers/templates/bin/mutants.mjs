@@ -34,8 +34,13 @@
 //   снимок её незакоммиченных правок; mutate.link — каталоги базы ссылкой (vendor,
 //   node_modules), mutate.copy — файлы копией (env); переменные воркера и prepare — те же,
 //   что у parallel-tests, с {dir} копии и {i} её слота;
+//   vendor composer — настоящий каталог: composer/, bin/ и autoload.php копией, пакеты
+//   ссылками, иначе автозагрузчик нашёл бы классы приложения в базе, а не в копии;
 // - контроль: на каждую пару «репозиторий, фильтр» — нулевой мутант без замены; он обязан
 //   быть зелёным, иначе мутанты этого фильтра недействительны — проба мерила бы себя;
+// - проверка копии (copycheck): на каждый мутируемый файл — тот же фильтр с этим файлом,
+//   опустошённым в копии; он обязан покраснеть, иначе тест не видит файл копии, и мутанты
+//   в нём недействительны, а не «выжили»;
 // - на мутант: замена → mutate.check с {file}, если задан (синтаксис файла) → команда с
 //   фильтром → откат файла → копия обязана быть чистой (git status --porcelain пуст);
 // - кеш: хеш определения мутанта, команды, мутируемого файла и тестовых файлов; совпал
@@ -156,6 +161,25 @@ function unlinkLinks(dir) {
   }
 }
 
+// vendor composer ссылкой целиком прячет копию от тестов: автозагрузчик считает корень
+// проекта от реального пути vendor/composer ($baseDir = dirname($vendorDir), $vendorDir =
+// dirname(__DIR__)), и классы приложения грузятся из базы, а не из копии. Прокси vendor/bin
+// так же считают autoload.php от своего __DIR__. Поэтому vendor копии — настоящий каталог:
+// composer/, bin/ и файлы верхнего уровня — копией (небольшие), пакеты — ссылками на базу.
+const isComposerVendor = (dir) => fs.existsSync(path.join(dir, 'autoload.php')) && fs.existsSync(path.join(dir, 'composer'));
+const COMPOSER_COPIED = new Set(['composer', 'bin']);
+
+function linkComposerVendor(target, dest) {
+  fs.mkdirSync(dest);
+  for (const e of fs.readdirSync(target, { withFileTypes: true })) {
+    const from = path.join(target, e.name);
+    const to = path.join(dest, e.name);
+    if (COMPOSER_COPIED.has(e.name)) fs.cpSync(from, to, { recursive: true, verbatimSymlinks: true });
+    else if (fs.statSync(from).isDirectory()) fs.symlinkSync(from, to, 'junction');
+    else fs.copyFileSync(from, to);
+  }
+}
+
 function removeCopy(copy) {
   unlinkLinks(copy);
   const r = git(copy, ['rev-parse', '--path-format=absolute', '--git-common-dir'], { allowFail: true });
@@ -199,12 +223,16 @@ function prepareCopy({ root, repo, base, slot, cfg }) {
     let st = null;
     try { st = fs.statSync(target); } catch { /* нет */ }
     if (!st?.isDirectory()) fail(`${repo}: mutate.link «${p}» — в ${base} нет такого каталога`);
+    if (git(base, ['ls-files', '--', p]).trim()) fail(`${repo}: mutate.link «${p}» отслеживается git — копия дерева получает его и так`);
+    // Прошлый прогон оставил ссылку или каталог vendor — сначала снимаются ссылки внутри,
+    // потом удаляется остальное: удаление, прошедшее по ссылке, снесло бы каталог базы.
     let cur = null;
     try { cur = fs.lstatSync(dest); } catch { /* ещё нет */ }
-    if (cur && !cur.isSymbolicLink()) fail(`${repo}: mutate.link «${p}» — в копии это не ссылка, а файл дерева`);
-    if (cur) fs.unlinkSync(dest);
+    if (cur?.isSymbolicLink()) fs.unlinkSync(dest);
+    else if (cur) { unlinkLinks(dest); fs.rmSync(dest, { recursive: true, force: true }); }
     fs.mkdirSync(path.dirname(dest), { recursive: true });
-    fs.symlinkSync(target, dest, 'junction');
+    if (isComposerVendor(target)) linkComposerVendor(target, dest);
+    else fs.symlinkSync(target, dest, 'junction');
   }
   for (const p of cfg.mutate.copy) {
     const src = path.join(base, p);
@@ -300,7 +328,9 @@ function inspect(m) {
     if (missing.length) error = `тестового файла нет: ${missing.join(', ')}`;
   }
   const mut = m.cfg.mutate;
-  m.key = sha('mutant/1', { repo: m.repo, file: m.file, find: m.find, replace: m.replace, filter: m.filter, command: mut.command, check: mut.check, env: m.cfg.env }, src ?? '', ...tests.map(([t, c]) => `${t}\n${c ?? ''}`));
+  // Версия ключа растёт, когда меняется то, как копия собирается: результаты 2.4.0 с vendor
+  // composer ссылкой целиком мерили код базы, а не копии, и из кеша возвращаться не должны.
+  m.key = sha('mutant/2', { repo: m.repo, file: m.file, find: m.find, replace: m.replace, filter: m.filter, command: mut.command, check: mut.check, env: m.cfg.env }, src ?? '', ...tests.map(([t, c]) => `${t}\n${c ?? ''}`));
   m.error = error;
   m.src = src;
   m.testContents = tests;
@@ -339,49 +369,69 @@ async function main() {
     if (!groups.has(g)) groups.set(g, { repo: m.repo, filter: m.filter, cfg: m.cfg, base: m.base, mutants: [] });
     groups.get(g).mutants.push(m);
   }
+  // Проверка копии — по файлу каждой группы: тот же фильтр с опустошённым в копии файлом обязан
+  // покраснеть. Зелёный значит, что тест читает этот файл не из копии (ссылка, автозагрузчик,
+  // кеш сборки) или не читает вовсе, — и любой мутант в нём «выжил» бы, ничего не измерив.
   let cn = 0;
+  let kn = 0;
   for (const g of groups.values()) {
     g.id = `control-${++cn}`;
+    g.kind = 'control';
     const files = [...new Set(g.mutants.map((m) => m.file))].sort();
     const tests = [...new Map(g.mutants.flatMap((m) => m.testContents)).entries()].sort();
-    g.key = sha('control/1', { repo: g.repo, filter: g.filter, command: g.cfg.mutate.command, env: g.cfg.env },
+    g.key = sha('control/2', { repo: g.repo, filter: g.filter, command: g.cfg.mutate.command, env: g.cfg.env },
       ...files.map((f) => `${f}\n${g.mutants.find((m) => m.file === f).src}`), ...tests.map(([t, c]) => `${t}\n${c}`));
     g.label = g.mutants.map((m) => m.id).join(',');
+    g.checks = files.map((f) => ({
+      id: `copycheck-${++kn}`, kind: 'copycheck', repo: g.repo, cfg: g.cfg, base: g.base, filter: g.filter, file: f, group: g,
+      label: `${f}: ${g.mutants.filter((m) => m.file === f).map((m) => m.id).join(',')}`, key: sha('copycheck/1', g.key, f),
+    }));
   }
 
   const want = (m) => !opts.only || opts.only.has(m.id);
   for (const m of list) {
+    m.kind = 'mutant';
     m.cached = !opts.force && !m.error && cache[m.key] ? cache[m.key] : null;
     m.todo = !m.error && !m.cached && want(m);
   }
   for (const g of groups.values()) {
     g.cached = !opts.force && cache[g.key] ? cache[g.key] : null;
     g.todo = g.mutants.some((m) => m.todo) || (!g.cached && g.mutants.some(want));
+    for (const k of g.checks) {
+      const of = g.mutants.filter((m) => m.file === k.file);
+      k.cached = !opts.force && cache[k.key] ? cache[k.key] : null;
+      k.todo = of.some((m) => m.todo) || (!k.cached && of.some(want));
+    }
   }
   const controls = [...groups.values()].filter((g) => g.todo);
+  const checks = [...groups.values()].flatMap((g) => g.checks).filter((k) => k.todo);
   const mutants = list.filter((m) => m.todo);
 
   if (opts.dryRun) {
-    for (const g of groups.values()) say(`${g.id} ${g.repo} filter=${g.filter} мутанты=${g.label} — ${g.todo ? 'прогон' : `кеш: ${g.cached.status}`}`);
+    for (const g of groups.values()) {
+      say(`${g.id} ${g.repo} filter=${g.filter} мутанты=${g.label} — ${g.todo ? 'прогон' : `кеш: ${g.cached.status}`}`);
+      for (const k of g.checks) say(`${k.id} ${k.repo} ${k.label} — ${k.todo ? 'прогон' : `кеш: ${k.cached.status}`}`);
+    }
     for (const m of list) say(`${m.id} ${m.repo} ${m.file} — ${m.error ? `ошибка применения: ${m.error}` : m.todo ? 'прогон' : m.cached ? `кеш: ${m.cached.status}` : 'не выбран'}`);
-    say(`план: контролей ${controls.length}, мутантов ${mutants.length}, из кеша ${list.filter((m) => m.cached).length}, ошибок применения ${list.filter((m) => m.error).length}`);
+    say(`план: контролей ${controls.length}, проверок копии ${checks.length}, мутантов ${mutants.length}, из кеша ${list.filter((m) => m.cached).length}, ошибок применения ${list.filter((m) => m.error).length}`);
     return 0;
   }
 
   const t0 = Date.now();
-  const jobs = controls.length + mutants.length;
+  const jobs = controls.length + checks.length + mutants.length;
   if (jobs) {
     fs.mkdirSync(runsDir, { recursive: true });
     const limit = slotLimit(ws);
-    const slots = await acquire(Math.min(limit.n, opts.workers ?? limit.n, Math.max(controls.length, mutants.length)), limit, { tool: 'mutants', dir: rel(path.dirname(input)) }, 'mutants');
-    say(`START mutants=${mutants.length} controls=${controls.length} slots=${slots.join(',')}`);
+    const slots = await acquire(Math.min(limit.n, opts.workers ?? limit.n, Math.max(controls.length, checks.length, mutants.length)), limit, { tool: 'mutants', dir: rel(path.dirname(input)) }, 'mutants');
+    say(`START mutants=${mutants.length} controls=${controls.length} copychecks=${checks.length} slots=${slots.join(',')}`);
     try {
-      const repos = [...new Set([...controls.map((g) => g.repo), ...mutants.map((m) => m.repo)])];
+      const all = [...controls, ...checks, ...mutants];
+      const repos = [...new Set(all.map((x) => x.repo))];
       const copies = new Map();
       const prep = [];
       for (const slot of slots) {
         for (const repo of repos) {
-          const any = [...controls, ...mutants].find((x) => x.repo === repo);
+          const any = all.find((x) => x.repo === repo);
           const copy = prepareCopy({ root, repo, base: any.base.abs, slot, cfg: any.cfg });
           copies.set(`${repo}\0${slot}`, copy);
           const vars = { i: slot, n: 1, slots: String(slot), repo, dir: copy, root, tmp: path.join(runsDir, `tmp-s${slot}`) };
@@ -399,12 +449,24 @@ async function main() {
       }
       await Promise.all(prep);
       const ctx = { root, runsDir, copies, rel };
-      await pool(slots, controls, (g, slot) => runJob(g, slot, ctx, null));
+      await pool(slots, controls, (g, slot) => runJob(g, slot, ctx));
       for (const g of groups.values()) {
         const c = g.result ?? g.cached;
         if (c && c.status !== 'green') for (const m of g.mutants) { m.todo = false; m.invalid = `контроль ${g.id} красный — ${c.log ?? 'см. кеш'}`; }
       }
-      await pool(slots, mutants.filter((m) => m.todo), (m, slot) => runJob(m, slot, ctx, m));
+      await pool(slots, checks.filter((k) => !k.group.mutants.every((m) => m.invalid)), (k, slot) => runJob(k, slot, ctx));
+      for (const g of groups.values()) {
+        for (const k of g.checks) {
+          const c = k.result ?? k.cached;
+          if (!c || c.status === 'red') continue;
+          for (const m of g.mutants) {
+            if (m.file !== k.file || m.invalid) continue;
+            m.todo = false;
+            m.invalid = `тест не видит ${k.file} копии: фильтр зелёный и с пустым файлом (${k.id}) — ${c.log}`;
+          }
+        }
+      }
+      await pool(slots, mutants.filter((m) => m.todo), (m, slot) => runJob(m, slot, ctx));
     } finally {
       release(slots);
       for (const slot of slots) fs.rmSync(path.join(runsDir, `tmp-s${slot}`), { recursive: true, force: true });
@@ -412,7 +474,11 @@ async function main() {
   }
 
   // Красный контроль не кешируется: причина бывает в окружении, и следующий прогон его повторит.
-  for (const g of groups.values()) if (g.result?.status === 'green') cache[g.key] = g.result;
+  // То же у проверки копии: кешируется только красная — копия видна тесту.
+  for (const g of groups.values()) {
+    if (g.result?.status === 'green') cache[g.key] = g.result;
+    for (const k of g.checks) if (k.result?.status === 'red') cache[k.key] = k.result;
+  }
   for (const m of list) if (m.result && ['killed', 'survived'].includes(m.result.status)) cache[m.key] = m.result;
   if (jobs) fs.writeFileSync(cacheFile, JSON.stringify(cache, null, 1));
 
@@ -428,7 +494,7 @@ async function main() {
     let onMutant = '—';
     let status;
     if (m.error) { status = `ошибка применения: ${m.error}`; tally.errors++; }
-    else if (m.invalid) { status = `недействителен: ${m.invalid}`; tally.invalid++; onBranch = 'красный'; }
+    else if (m.invalid) { status = `недействителен: ${m.invalid}`; tally.invalid++; onBranch = control?.status === 'green' ? 'зелёный' : 'красный'; }
     else if (!r) { status = 'не прогнан'; tally.skipped++; }
     else if (r.status === 'apply-error') { status = `ошибка применения: ${r.note}`; tally.errors++; }
     else {
@@ -463,8 +529,11 @@ async function pool(slots, items, fn) {
   }));
 }
 
-// Контроль (mutant === null) и мутант идут одним путём: разница — только замена в файле.
-async function runJob(job, slot, { root, runsDir, copies }, mutant) {
+// Контроль, проверка копии и мутант идут одним путём: разница — только правка файла
+// (никакой, пустой файл, замена find на replace).
+async function runJob(job, slot, { root, runsDir, copies }) {
+  const mutant = job.kind === 'mutant' ? job : null;
+  const edited = job.kind === 'control' ? null : job.file;
   const repo = job.repo;
   const cfg = job.cfg;
   const copy = copies.get(`${repo}\0${slot}`);
@@ -477,6 +546,10 @@ async function runJob(job, slot, { root, runsDir, copies }, mutant) {
   let result;
   try {
     fs.writeSync(log, `# ${job.id} ${repo} slot=${slot} copy=${copy}\n`);
+    if (job.kind === 'copycheck') {
+      fs.writeFileSync(path.join(copy, job.file), '');
+      fs.writeSync(log, `# ${job.file}: опустошён в копии — фильтр обязан покраснеть\n`);
+    }
     if (mutant) {
       const p = path.join(copy, mutant.file);
       const src = fs.readFileSync(p, 'utf8');
@@ -496,7 +569,7 @@ async function runJob(job, slot, { root, runsDir, copies }, mutant) {
       else result = { status: code === 0 ? 'green' : 'red', code };
     }
   } finally {
-    if (mutant) git(copy, ['checkout', '-q', '--', mutant.file]);
+    if (edited) git(copy, ['checkout', '-q', '--', edited]);
     const own = [...cfg.mutate.link, ...cfg.mutate.copy];
     let left = dirtyPaths(copy, own);
     if (left.length) {
