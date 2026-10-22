@@ -19,7 +19,12 @@ if (!fs.existsSync('vendor/marker') || !fs.existsSync('.env.testing')) {
   console.log('копия без vendor/marker или .env.testing');
   process.exit(3);
 }
-const src = fs.readFileSync('src/rule.txt', 'utf8');
+// $FAKE_COMPOSER — код ищется так, как его ищет автозагрузчик composer: от реального пути
+// vendor/composer два уровня вверх. $FAKE_SRC_DIR — код читается из чужого дерева: так выглядит
+// тест, который не видит копию.
+const srcDir = process.env.FAKE_SRC_DIR
+  ?? (process.env.FAKE_COMPOSER ? path.resolve(fs.realpathSync('vendor/composer'), '..', '..') : '.');
+const src = fs.readFileSync(path.join(srcDir, 'src/rule.txt'), 'utf8');
 let bad = 0;
 for (const line of fs.readFileSync(testFile, 'utf8').split('\n')) {
   const m = line.match(/^expect (.+)$/);

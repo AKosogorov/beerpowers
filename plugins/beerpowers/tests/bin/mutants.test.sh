@@ -3,7 +3,7 @@
 # (fake-mutant-test.mjs): убит и выжил, ровно одно вхождение find, база не тронута, копии чистые,
 # два потока на разных копиях, ссылка и копия файлов в копии, кеш по хешу, незакоммиченные
 # правки базы в копии, нулевой мутант, мусор теста в копии, --only, --dry-run, --clean не трогает
-# vendor базы, отказ схемы.
+# vendor базы, vendor composer в копии, проверка копии пустым файлом, настоящий PHP (если есть), отказ схемы.
 #
 # Запуск: sh plugins/beerpowers/tests/bin/mutants.test.sh
 
@@ -41,6 +41,11 @@ write_ws() { # write_ws <mutate.command>
         "files": ["tests/*.test"],
         "env": { "DB_NAME": "calc_w{i}_test", "REPORT": "{root}/report" },
         "mutate": { "command": "$1", "link": ["vendor"], "copy": [".env.testing"] }
+      },
+      "phpapp": {
+        "command": "php {files}",
+        "files": ["tests/*Test.php"],
+        "mutate": { "command": "php {filter}", "link": ["vendor"] }
       }
     }
   }
@@ -145,6 +150,74 @@ if has "$out" 'копий убрано: 2' && [ -f "$base/vendor/marker" ] && [ 
   ok "--clean — копии убраны, vendor базы на месте, worktree сняты"
 else ko "--clean — копии убраны, vendor базы на месте, worktree сняты" "$out
 $(git -C "$base" worktree list)"; fi
+
+# 11. vendor в раскладке composer: копия получает настоящий каталог vendor — composer/, bin/
+# и файлы верхнего уровня копией, пакеты ссылками; код ищется от реального пути vendor/composer.
+mkdir -p "$base/vendor/composer" "$base/vendor/pkg" "$base/vendor/bin"
+printf 'map\n' > "$base/vendor/composer/autoload_psr4.txt"
+printf 'autoload\n' > "$base/vendor/autoload.php"
+printf 'lib\n' > "$base/vendor/pkg/lib.txt"
+printf 'proxy\n' > "$base/vendor/bin/tool"
+out=$(FAKE_COMPOSER=1 mt "$(native "$muts")" --force)
+c1="$ws/.claude/.cache/mutants/calc-s1"
+if has "$out" '`M1` .*| зелёный | красный | убит |' && has "$out" '`M2` .*| зелёный | красный | убит |' \
+  && [ -d "$c1/vendor" ] && [ ! -L "$c1/vendor" ] && [ ! -L "$c1/vendor/composer" ] && [ ! -L "$c1/vendor/bin" ] \
+  && [ -L "$c1/vendor/pkg" ] && [ -f "$c1/vendor/autoload.php" ] && copies_clean; then
+  ok "vendor composer: composer/ и bin/ копией, пакеты ссылкой — мутанты видны тесту"
+else ko "vendor composer: composer/ и bin/ копией, пакеты ссылкой — мутанты видны тесту" "$out
+$(ls -la "$c1/vendor" 2>&1)"; fi
+
+# 12. Тест читает код не из копии — проверка копии (файл опустошён, фильтр зелёный) делает
+# мутанты недействительными, а не выжившими. Копии переиспользуются: их vendor пересобирается,
+# vendor базы обязан остаться целым.
+out=$(FAKE_SRC_DIR=$(native "$base") mt "$(native "$muts")" --force)
+code=$?
+if [ "$code" = 1 ] && has "$out" '^done copycheck-1 (src/rule.txt: M1,M2) зелёный' \
+  && has "$out" '`M1` .*недействителен: тест не видит src/rule.txt копии' && ! has "$out" '| выжил' && has "$out" ' invalid=2 ' \
+  && [ -f "$base/vendor/pkg/lib.txt" ] && [ -f "$base/vendor/composer/autoload_psr4.txt" ] && [ -f "$base/vendor/bin/tool" ]; then
+  ok "тест не видит копию — проверка копии, мутанты недействительны"
+else ko "тест не видит копию — проверка копии, мутанты недействительны (код $code)" "$out"; fi
+
+# 13. Настоящий PHP с автозагрузчиком composer ($baseDir = dirname($vendorDir) от __DIR__):
+# мутант обязан быть убит. Без php на машине — пропуск.
+if command -v php >/dev/null 2>&1; then
+  pb="$ws/projects/phpapp"
+  mkdir -p "$pb/app" "$pb/tests" "$pb/vendor/composer"
+  printf '<?php\nnamespace App;\nclass Rule { public static function limit(): int { return 90; } }\n' > "$pb/app/Rule.php"
+  printf '<?php\nrequire "vendor/autoload.php";\nexit(App\\Rule::limit() === 90 ? 0 : 1);\n' > "$pb/tests/RuleTest.php"
+  cat > "$pb/vendor/composer/autoload_psr4.php" <<'PHP'
+<?php
+$vendorDir = dirname(__DIR__);
+$baseDir = dirname($vendorDir);
+return ['App\\' => [$baseDir . '/app']];
+PHP
+  cat > "$pb/vendor/autoload.php" <<'PHP'
+<?php
+$map = require __DIR__ . '/composer/autoload_psr4.php';
+spl_autoload_register(function ($class) use ($map) {
+    foreach ($map as $prefix => $dirs) {
+        if (strpos($class, $prefix) !== 0) continue;
+        foreach ($dirs as $dir) {
+            $file = $dir . '/' . str_replace('\\', '/', substr($class, strlen($prefix))) . '.php';
+            if (is_file($file)) { require $file; return; }
+        }
+    }
+});
+PHP
+  printf 'vendor/\n' > "$pb/.gitignore"
+  git -C "$pb" init -q && git -C "$pb" add -A && git -C "$pb" -c user.name=t -c user.email=t@t commit -q -m init
+  cat > "$tmp/scratch/php.json" <<'EOF'
+{ "repo": "phpapp", "filter": "tests/RuleTest.php", "tests": ["tests/RuleTest.php:3"],
+  "mutants": [ { "id": "M1", "file": "app/Rule.php", "find": "return 90;", "replace": "return 91;" } ] }
+EOF
+  out=$(mt "$(native "$tmp/scratch/php.json")")
+  code=$?
+  if [ "$code" = 0 ] && has "$out" '^done copycheck-1 (app/Rule.php: M1) красный' && has "$out" '`M1` .*| зелёный | красный | убит |'; then
+    ok "настоящий PHP и автозагрузчик composer — мутант убит в копии"
+  else ko "настоящий PHP и автозагрузчик composer — мутант убит в копии (код $code)" "$out"; fi
+else
+  echo "skip  настоящий PHP и автозагрузчик composer — php на машине нет"
+fi
 
 # 10. Схема: mutate.command без {filter} — отказ, код 2.
 write_ws "node \\\"$runner\\\" tests/rule.test"
