@@ -1,6 +1,6 @@
 ---
 name: commands-backend
-description: Формы вызова для projects/shop-backend — гейты, линт, миграции, грабли инструментов
+description: Формы вызова для projects/shop-backend — гейты, тесты по фильтру, линт, миграции, грабли инструментов
 metadata:
   type: project
 ---
@@ -25,6 +25,18 @@ metadata:
 их гоняет и `reviewer` на финальном проходе, если готовых результатов нет.
 
 Тесты идут по PostgreSQL, база `shop_test` (`phpunit.xml`, `DB_CONNECTION=pgsql`).
+
+## Тесты по фильтру
+
+На срезе — тесты затронутого; весь набор — `check` из «Гейтов», один раз перед ранним ревью.
+
+| Что | Форма |
+|---|---|
+| файл или каталог | `php projects/shop-backend/vendor/bin/phpunit -c projects/shop-backend/phpunit.xml projects/shop-backend/tests/Feature/Orders` |
+| тест по имени | `php projects/shop-backend/vendor/bin/phpunit -c projects/shop-backend/phpunit.xml --filter OrderTotalTest` |
+
+В рабочем дереве — те же формы с `worktrees/<КОД>/shop-backend` вместо `projects/shop-backend`.
+Зелёный — итоговая строка `OK (…)`. При setup не прогонялись.
 
 ## Линт
 

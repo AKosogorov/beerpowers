@@ -45,12 +45,14 @@
 // на остальных) из каталога {dir}. Воркер получает и BEERPOWERS_TEST_SLOT, и
 // BEERPOWERS_TEST_SLOTS.
 //
-// Вывод: строка START на репозиторий, строка done на воркер, затем итог — REPO на
+// Вывод: строка START на репозиторий (с коммитом head=<sha> и tree=clean|dirty — есть ли
+// в дереве незакоммиченное), строка done на воркер, затем итог — REPO на
 // репозиторий, под ней воркеры и упавшие тесты, TOTAL repos=… tests=… failed=… и последней
 // строкой CODE=<код выхода>: 0 — всё зелёное, 1 — упали тесты, подготовка или запуск,
 // 2 — ошибка настроек или аргументов. Полный лог каждого воркера — файлом в каталоге
 // прогона; свои процессы скрипт гасит по своим PID, если его остановили.
 
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -279,6 +281,15 @@ async function runRepo(name, cfg, want, ctx) {
   };
   const shownEnv = (env) => Object.keys(cfg.env).filter((k) => k in env).map((k) => `${k}=${env[k]}`).join(' ');
   const tmpOf = (slot) => path.join(repoOut, `tmp-w${slot}`);
+  // Коммит прогона — в строку START: по ней финальный ревью узнаёт, что лог снят с того же
+  // коммита, что уйдёт в MR, а не верит пересказу. dirty — в дереве есть незакоммиченное.
+  const git = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
+  // Каталог без своего репозитория git молча отдал бы коммит внешнего — тогда «?».
+  const top = git('rev-parse', '--show-toplevel');
+  const own = top.status === 0 && path.relative(path.resolve(top.stdout.trim()), path.resolve(dir)) === '';
+  const sha = own ? git('rev-parse', 'HEAD').stdout.trim() || '?' : '?';
+  const tree = sha === '?' ? '?' : git('status', '--porcelain').stdout.trim() ? 'dirty' : 'clean';
+  const at = `head=${sha} tree=${tree}`;
 
   try {
     if (cfg.mode === 'split') {
@@ -288,11 +299,11 @@ async function runRepo(name, cfg, want, ctx) {
         say(`  раскладка ${byTime ? 'по времени из junit прошлого прогона' : 'по числу файлов — junit прошлого прогона нет'}`);
         for (const [j, g] of groups.entries()) await splitWorker(ids[j], g, wctx);
       } else {
-        say(`START ${name} dir=${dirRel} mode=split files=${files.length} slots=${common.slots} раскладка ${byTime ? 'по времени из junit прошлого прогона' : 'по числу файлов'}`);
+        say(`START ${name} dir=${dirRel} ${at} mode=split files=${files.length} slots=${common.slots} раскладка ${byTime ? 'по времени из junit прошлого прогона' : 'по числу файлов'}`);
         await Promise.all(groups.map((g, j) => splitWorker(ids[j], g, wctx)));
       }
     } else {
-      if (!opts.dryRun) say(`START ${name} dir=${dirRel} mode=native slots=${common.slots}`);
+      if (!opts.dryRun) say(`START ${name} dir=${dirRel} ${at} mode=native slots=${common.slots}`);
       await nativeRun(ids, { ...ctx, cfg, dir, repoOut, common, envOf, shownEnv, tmpOf, res });
     }
   } finally {
