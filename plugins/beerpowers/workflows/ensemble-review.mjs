@@ -18,6 +18,8 @@ export const meta = {
 }
 
 const SCOPE = (args && args.scope) || 'незакоммиченные изменения рабочего дерева (git status + git diff)'
+// Модель не понижается: general-purpose наследует модель сессии, файл роли даёт свой тир —
+// ревью не понижается никогда (team-lead.md, «Модель роли»).
 const REVIEWER = (args && args.reviewerType) || 'general-purpose'
 const LENSES = (args && args.lenses) || [
   'модель доступа и видимость данных: обход политик/гардов, утечка чужих данных, наследование scope дочерними сущностями',

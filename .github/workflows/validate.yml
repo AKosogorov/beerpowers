@@ -98,6 +98,9 @@ jobs:
       - name: cdp-run — сценарии на учебном сайте, падения, подмена ответов, отказ на файле сценариев
         run: sh plugins/beerpowers/tests/bin/cdp-run.test.sh
 
+      - name: token-audit — разрез роль × модель на фикстуре логов
+        run: sh plugins/beerpowers/tests/bin/token-audit.test.sh
+
       - name: Workflow-скрипты синтаксически валидны
         run: node .github/scripts/check_workflows.mjs plugins/beerpowers/workflows/*.mjs
 

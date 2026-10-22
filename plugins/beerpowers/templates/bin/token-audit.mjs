@@ -199,6 +199,9 @@ if (allProjects) {
 
 const byModel = new Map();
 const byRole = new Map();
+// Роль × модель: тир роли без своего файла доходит только параметром вызова, и расхождение
+// с charter видно лишь здесь — по логам, а не по настройкам.
+const byRoleModel = new Map();
 const bySession = new Map();
 const byProject = new Map();
 const runs = [];
@@ -356,6 +359,15 @@ for (const t of targets) {
   r.runs += 1;
   r.cost += run.cost;
 
+  for (const [model, u] of usageByModel) {
+    const key = `${t.role}\t${model}`;
+    if (!byRoleModel.has(key)) byRoleModel.set(key, { role: t.role, model, usage: emptyUsage(), runs: 0, cost: 0 });
+    const rm = byRoleModel.get(key);
+    mergeUsage(rm.usage, u);
+    rm.runs += 1;
+    rm.cost += costOf(u, model) ?? 0;
+  }
+
   if (!bySession.has(t.session)) bySession.set(t.session, { main: emptyUsage(), sub: emptyUsage(), subRuns: 0, cost: 0, roles: new Map() });
   const s = bySession.get(t.session);
   mergeUsage(t.kind === 'main' ? s.main : s.sub, usage);
@@ -399,6 +411,9 @@ const report = {
     requestsPerRun: Math.round(r.usage.requests / r.runs),
     billedPerRequest: Math.round(billedOf(r.usage) / Math.max(r.usage.requests, 1)),
   })).sort((a, b) => b.cost - a.cost),
+  roleModelRows: [...byRoleModel.values()].map((x) => ({
+    role: x.role, model: x.model, runs: x.runs, requests: x.usage.requests, billed: billedOf(x.usage), cost: +x.cost.toFixed(2),
+  })).sort((a, b) => a.role.localeCompare(b.role) || b.requests - a.requests),
   sessionRows: [...bySession.entries()].map(([id, s]) => ({
     id, cost: +s.cost.toFixed(2), mainRequests: s.main.requests, subRequests: s.sub.requests, subRuns: s.subRuns,
     roles: [...s.roles.entries()].sort((a, b) => b[1] - a[1]),
@@ -457,6 +472,11 @@ if (allProjects) {
 console.log('\n=== ПО РОЛЯМ ===');
 for (const r of report.roleRows) {
   console.log(`${r.role.padEnd(18)} $${String(fmt(r.cost)).padStart(9)}  заходов ${String(r.runs).padStart(4)}  $${String(r.costPerRun).padStart(7)}/заход  запросов/заход ${String(r.requestsPerRun).padStart(4)}  ${M(r.billedPerRequest)}/запрос`);
+}
+
+console.log('\n=== РОЛЬ × МОДЕЛЬ ===');
+for (const r of report.roleModelRows) {
+  console.log(`${r.role.padEnd(18)} ${r.model.padEnd(28)} заходов ${String(r.runs).padStart(4)}  запросов ${String(fmt(r.requests)).padStart(7)}  $${fmt(r.cost)}`);
 }
 
 const par = report.parallel;

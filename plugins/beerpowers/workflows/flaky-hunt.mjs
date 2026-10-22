@@ -15,6 +15,8 @@ if (!args || !args.scenario) {
 }
 const MAX_RUNS = (args && args.maxRuns) || 25
 const MIN_BUDGET = (args && args.minBudget) || 40_000
+// Модель — от testerType: файл роли даёт свой тир, general-purpose наследует модель сессии —
+// поймать гонку и не принять за неё артефакт прогона — не механическая работа.
 const TESTER = (args && args.testerType) || 'general-purpose'
 
 const RUN = {
