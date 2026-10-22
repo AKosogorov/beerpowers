@@ -80,7 +80,12 @@ description: Проверить, что команда работает на э�
    в `tools` нет упразднённых (`MultiEdit`, `Computer`, голый `Task`); поля `effort:` нет
    (уровень выставляет team-lead в вызове — поле перекрыло бы его, **warn**); в теле нет `{{...}}`;
    в `description` нет `<example>`-блоков (**warn**); `skills` и `model` совпадают с колонками
-   charter (charter первичен — расхождение **warn**, фикс `/beerpowers:update`).
+   charter (charter первичен — расхождение **warn**, фикс `/beerpowers:update`). Роль без своего
+   файла (встроенный `Explore`, `Plan` или `general-purpose` в составе) названа в строке «Модели»
+   charter с тиром; не названа → **warn**: без тира в charter team-lead не передаёт `model`,
+   и роль идёт на модели рантайма по умолчанию. Фикс — дописать роль в строку «Модели»
+   (`explorer — haiku, параметром model вызова`); тир доходит до роли только параметром вызова.
+   Проверить по логам, что дошёл, — `node .claude/bin/token-audit.mjs`, раздел «РОЛЬ × МОДЕЛЬ».
 9. **Settings.** `.claude/settings.json` и `.claude/settings.local.json` — валидный JSON;
    `permissions.deny` в формате `Tool(паттерн)`; флаг Agent Teams — в коммитируемом файле;
    общий `allow` содержит литеральным путём (`Bash(.claude/bin/<скрипт>:*)`,
