@@ -36,47 +36,13 @@
 // Путь ищется так: BEERPOWERS_CHROME (личный, из env .claude/settings.local.json) →
 // стандартные места установки Chrome, затем Chromium и Edge под текущую ОС.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { spawn, execFileSync } from 'node:child_process'
-import { homedir } from 'node:os'
+import { spawn } from 'node:child_process'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { findChrome } from './lib/chrome.mjs'
 import { findRoot, loadWorkspace } from './lib/workspace.mjs'
 
 const PORT = process.env.CDP_PORT || '9333'
-
-function chromeCandidates() {
-  const env = process.env
-  if (process.platform === 'win32') {
-    const roots = [env.ProgramFiles, env['ProgramFiles(x86)'], env.LOCALAPPDATA].filter(Boolean)
-    return [
-      ...roots.map(r => join(r, 'Google', 'Chrome', 'Application', 'chrome.exe')),
-      ...roots.map(r => join(r, 'Chromium', 'Application', 'chrome.exe')),
-      ...roots.map(r => join(r, 'Microsoft', 'Edge', 'Application', 'msedge.exe')),
-    ]
-  }
-  if (process.platform === 'darwin') {
-    return ['/Applications', join(homedir(), 'Applications')].flatMap(r => [
-      join(r, 'Google Chrome.app', 'Contents', 'MacOS', 'Google Chrome'),
-      join(r, 'Chromium.app', 'Contents', 'MacOS', 'Chromium'),
-      join(r, 'Microsoft Edge.app', 'Contents', 'MacOS', 'Microsoft Edge'),
-    ])
-  }
-  const found = []
-  for (const name of ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser', 'microsoft-edge']) {
-    try { found.push(execFileSync('which', [name], { encoding: 'utf8' }).trim()) } catch { /* нет в PATH */ }
-  }
-  return found
-}
-
-function findChrome() {
-  const own = process.env.BEERPOWERS_CHROME
-  if (own) {
-    if (existsSync(own)) return { path: own, tried: [own] }
-    return { path: null, tried: [`${own} (BEERPOWERS_CHROME — файла нет)`] }
-  }
-  const tried = chromeCandidates()
-  return { path: tried.find(p => p && existsSync(p)) ?? null, tried }
-}
 
 async function versionOrNull() {
   try { return await (await fetch(`http://127.0.0.1:${PORT}/json/version`)).json() } catch { return null }

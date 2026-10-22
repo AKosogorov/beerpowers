@@ -95,6 +95,9 @@ jobs:
       - name: mutants — применение и откат, одно вхождение, кеш по хешу, нулевой мутант, два потока
         run: sh plugins/beerpowers/tests/bin/mutants.test.sh
 
+      - name: cdp-run — сценарии на учебном сайте, падения, подмена ответов, отказ на файле сценариев
+        run: sh plugins/beerpowers/tests/bin/cdp-run.test.sh
+
       - name: Workflow-скрипты синтаксически валидны
         run: node .github/scripts/check_workflows.mjs plugins/beerpowers/workflows/*.mjs
 

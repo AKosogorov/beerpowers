@@ -71,6 +71,7 @@
       "Bash(node .claude/bin/parallel-tests.mjs:*)",
       "Bash(node .claude/bin/mutants.mjs:*)",
       "Bash(node .claude/bin/cdp-screenshot.mjs:*)",
+      "Bash(node .claude/bin/cdp-run.mjs:*)",
       "Bash(npm --prefix projects/shop-frontend run:*)",
       "Bash(npm --prefix worktrees/*/shop-frontend run:*)",
       "Bash(make -C projects/shop-backend:*)",
