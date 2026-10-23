@@ -11,6 +11,10 @@
 # Первый аргумент — репозиторий: projects/<имя-репо> или голое <имя-репо>. Второй — код задачи (он же имя ветки и имя каталога),
 # третий необязательный — база ветки; без него база задачи по node .claude/bin/git-base.mjs:
 # строка репозитория в memory/tasks/<КОД>/git-flow.md или профиль репозитория.
+# База голым именем ветки берётся с сервера, origin/<база>, если там она есть: локальная копия
+# может отставать. Базы нет ни на сервере, ни локально — отказ.
+#
+# --copy-env и --no-deps — флаги самого скрипта и после -- тоже: в worktree-setup они не уходят.
 #
 # Корень workspace — каталог над .claude/. Переменная окружения WORKSPACE_ROOT его
 # переопределяет: так скрипт проверяют на одноразовой фикстуре.
@@ -77,7 +81,7 @@ args=()
 setup_args=()
 passthrough=0
 for arg in "$@"; do
-    if [[ $passthrough -eq 1 ]]; then
+    if [[ $passthrough -eq 1 && $arg != --copy-env && $arg != --no-deps ]]; then
         setup_args+=("$arg")
         continue
     fi
@@ -129,8 +133,6 @@ if [[ -z $base ]]; then
         echo "worktree-add: базу не определить — назови её третьим аргументом (node .claude/bin/git-base.mjs $repo_name $task скажет почему)" >&2
         exit 2
     fi
-    # Локальная копия базы может отставать от сервера: ветка задачи растёт от origin/<база>.
-    git -C "$root/$repo_rel" rev-parse --verify --quiet "origin/$base" >/dev/null && base="origin/$base"
 fi
 if [[ $repo_rel == . ]]; then
     repo=$root
@@ -177,14 +179,38 @@ if [[ -e $target ]]; then
     exit 0
 fi
 
+# Ветка задачи может уже существовать: тогда её не создают заново, а выкладывают.
+have_branch=0
+git -C "$repo" show-ref --verify --quiet "refs/heads/$task" && have_branch=1
+
+# Базу git получает ref'ом, который разрешается сам. Имя ветки, которая есть только на сервере,
+# git worktree add -b <КОД> понимает по-своему: заводит локальную ветку с именем базы, выкладывает
+# дерево на неё, а -b молча теряет (git 2.54). Локальная копия базы к тому же может отставать
+# от сервера: ветка задачи растёт от origin/<база>.
+if [[ $have_branch -eq 0 ]]; then
+    if git -C "$repo" rev-parse --verify --quiet "refs/remotes/origin/$base" >/dev/null; then
+        base="origin/$base"
+    elif ! git -C "$repo" rev-parse --verify --quiet "$base^{commit}" >/dev/null; then
+        echo "worktree-add: базы «$base» нет ни на origin, ни локально — проверь имя, после git -C $repo_rel fetch повтори" >&2
+        exit 2
+    fi
+fi
+
 mkdir -p -- "$root/$wt_dir/$task"
 
-# Ветка задачи может уже существовать: тогда её не создают заново, а выкладывают.
-if git -C "$repo" show-ref --verify --quiet "refs/heads/$task"; then
+if [[ $have_branch -eq 1 ]]; then
     echo "ветка $task уже есть, выкладываю её"
     git -C "$repo" worktree add "$target" "$task"
 else
     git -C "$repo" worktree add "$target" -b "$task" "$base"
+fi
+
+# Дерево обязано стоять на ветке задачи: на любой другой коммиты задачи уйдут в чужую ветку.
+on_branch=$(git -C "$target" branch --show-current)
+if [[ $on_branch != "$task" ]]; then
+    echo "worktree-add: дерево $wt_rel выложено на ветку «$on_branch», а не на $task — остановлено." >&2
+    echo "перевести: git -C $wt_rel switch -c $task; лишнюю ветку «$on_branch» — убрать, если её завёл этот вызов" >&2
+    exit 1
 fi
 
 present=()

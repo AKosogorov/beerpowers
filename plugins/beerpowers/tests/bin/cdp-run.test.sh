@@ -144,6 +144,33 @@ if [ "$code" = 0 ] && has "$out" '^TOTAL scenarios=2 failed=0' && ! has "$out" '
   ok "--only по имени до @ — все ширины одного сценария"
 else ko "--only по имени до @ — все ширины одного сценария (код $code)" "$out"; fi
 
+# 5. Указатель и сеть: у mobile — мобильный User-Agent и Client Hints, протяжка касанием;
+# у мыши — наведение и протяжка мышью; клик по кнопке во вьюпорте не прокручивает страницу;
+# обрыв запроса с preflight не держит networkIdle. Адрес — localhost: запрос уходит на 127.0.0.1.
+lab=$(printf '%s' "$base" | sed 's/127\.0\.0\.1/localhost/')
+cat > "$tmp/lab.json" <<EOF
+{ "baseUrl": "$lab", "timeout": 4000, "scenarios": [
+  { "name": "touch", "width": 375, "height": 700, "mobile": true,
+    "steps": [{ "goto": "/lab" }, { "drag": "#pad", "by": [0, 150] }, { "wait": { "expr": "document.getElementById('pad').dataset.dy" } }],
+    "state": { "ua": "navigator.userAgent", "hint": "navigator.userAgentData?.mobile ?? null", "type": "document.getElementById('pad').dataset.type", "dy": "document.getElementById('pad').dataset.dy" } },
+  { "name": "mouse", "width": 800, "height": 600,
+    "steps": [
+      { "goto": "/lab" }, { "hover": "#hov" }, { "drag": "#pad", "by": [0, 150] },
+      { "eval": "scrollTo(0, 100)" }, { "click": "#go" }, { "capture": { "y": "scrollY" } }, { "click": "#go" },
+      { "wait": { "selector": "#r", "hasText": "done" } }, { "wait": { "networkIdle": 300 } }
+    ],
+    "state": { "ua": "navigator.userAgent", "on": "document.getElementById('hov').dataset.on ?? null", "type": "document.getElementById('pad').dataset.type", "dy": "document.getElementById('pad').dataset.dy" } }
+] }
+EOF
+out=$(run "$(native "$tmp/lab.json")" --out "$(native "$tmp/lab/out.jsonl")")
+code=$?
+got=$(jsonl "$tmp/lab/out.jsonl" "r.map(x => [x.name, x.ok, /Mobile/.test(x.state.ua), x.state.hint, x.state.type, x.state.dy, x.state.on, x.state.y].join(' ')).join(' | ')")
+if [ "$code" = 0 ] && [ "$got" = "touch true true true touch 150   | mouse true false  mouse 150 1 100" ] \
+  && jsonl "$tmp/lab/out.jsonl" "r[1].network.some(n => n.method === 'POST' && /ERR_ABORTED/.test(n.failed))" | grep -q true; then
+  ok "mobile — мобильный UA и касание, мышь — наведение и протяжка, клик без прокрутки, обрыв с preflight не держит networkIdle"
+else ko "mobile — мобильный UA и касание, мышь — наведение и протяжка, клик без прокрутки, обрыв с preflight не держит networkIdle (код $code)" "$out
+$got"; fi
+
 echo
 echo "$total случаев, упало $failed"
 [ "$failed" = 0 ]

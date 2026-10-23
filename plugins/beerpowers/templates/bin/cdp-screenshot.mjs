@@ -18,7 +18,7 @@
 //              и mobile; явно заданные поля сценария важнее. Список — режим --viewports
 //   width    — ширина вьюпорта (обязательно, если нет viewport)
 //   height   — высота вьюпорта (обязательно, если нет viewport)
-//   mobile   — эмулировать мобильное устройство (по умолчанию false)
+//   mobile   — эмулировать мобильное устройство: касания и мобильный User-Agent (по умолчанию false)
 //   waitMs   — сколько ждать после load, прежде чем мерить и снимать (по умолчанию 2000)
 //   out      — путь файла скриншота; не задан — скриншот не снимается, только метрики
 //   fullPage — снимать всю страницу, а не видимую часть
@@ -39,7 +39,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { spawn } from 'node:child_process'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { findChrome } from './lib/chrome.mjs'
+import { findChrome, mobileUserAgent } from './lib/chrome.mjs'
 import { findRoot, loadWorkspace } from './lib/workspace.mjs'
 
 const PORT = process.env.CDP_PORT || '9333'
@@ -237,6 +237,10 @@ for (const scenario of scenarios) {
     deviceScaleFactor: 1,
     mobile: Boolean(scenario.mobile),
   }, sessionId)
+  if (scenario.mobile) {
+    await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 }, sessionId)
+    await send('Emulation.setUserAgentOverride', mobileUserAgent(version['User-Agent']), sessionId)
+  }
 
   await send('Page.navigate', { url: scenario.url }, sessionId)
   await waitFor(msg => msg.sessionId === sessionId && msg.method === 'Page.loadEventFired')
