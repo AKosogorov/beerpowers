@@ -122,6 +122,24 @@ check 'влита cherry-pick'"'"'ом — по патчу' 'влита	патч
 
 check 'worktree-add берёт базу из профиля' 'база origin/dev' bash "$ws/.claude/bin/worktree-add" front PROJ-7
 
+# База голым именем ветки, которая есть только на сервере: git worktree add -b с таким именем
+# заводит локальную ветку базы и выкладывает дерево на неё. Скрипт отдаёт git origin/<база>.
+check 'worktree-add: база голым именем — от origin/<база>' 'база origin/release-spring' bash "$ws/.claude/bin/worktree-add" back PROJ-8 release-spring
+total=$((total + 1))
+on=$(git -C "$ws/worktrees/PROJ-8/back" branch --show-current)
+if [ "$on" = PROJ-8 ] && ! git -C "$ws/projects/back" show-ref --verify --quiet refs/heads/release-spring; then
+  echo "pass  worktree-add: дерево на ветке задачи, локальной ветки базы нет"
+else failed=$((failed + 1)); echo "FAIL  worktree-add: дерево на «$on», локальная release-spring: $(git -C "$ws/projects/back" branch --list release-spring)"; fi
+check 'worktree-add: базы нет нигде — отказ' 'базы «release-nope» нет' bash "$ws/.claude/bin/worktree-add" back PROJ-9 release-nope
+
+# --copy-env после -- — флаг самого скрипта: в worktree-setup он не уходит.
+printf '#!/bin/sh\necho "setup $*" > "%s/setup.log"\n' "$tmp" > "$ws/.claude/bin/worktree-setup"
+chmod +x "$ws/.claude/bin/worktree-setup"
+printf 'X=1\n' > "$ws/projects/back/.env"
+check 'worktree-add: --copy-env после -- — свой флаг' 'скопирован .env' bash "$ws/.claude/bin/worktree-add" back PROJ-10 -- --copy-env --seed
+check 'worktree-add: в worktree-setup — только флаги проекта' 'back '"$ws"'/worktrees/PROJ-10/back --seed' cat "$tmp/setup.log"
+rm -f "$ws/.claude/bin/worktree-setup" "$ws/projects/back/.env"
+
 # Дерево пересборки стенда снимается, только когда вершина отправлена в origin/<стенд>.
 f="$ws/projects/front"
 git -C "$f" worktree add -q --detach "$ws/worktrees/chore-dev-rebuild/front" origin/dev

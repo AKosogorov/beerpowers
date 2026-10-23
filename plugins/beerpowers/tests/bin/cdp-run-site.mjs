@@ -1,6 +1,6 @@
 // Учебный сайт для cdp-run.test.sh и примера скилла page-screenshot: вход, форма с парой полей,
-// сохранение через POST → 302 → 200, список офисов из API. Слушает 127.0.0.1 на свободном
-// порту и печатает его первой строкой: port=<n>.
+// сохранение через POST → 302 → 200, список офисов из API, страница указателя и сети /lab.
+// Слушает 127.0.0.1 на свободном порту и печатает его первой строкой: port=<n>.
 //
 // Запуск: node plugins/beerpowers/tests/bin/cdp-run-site.mjs
 import http from 'node:http'
@@ -53,7 +53,32 @@ ${saved ? '<div class="toast">Сохранено</div>' : ''}
   })
 </script>`)
 
-const OFFICES = { offices: [{ city: 'Казань' }, { city: 'Воронеж' }], meta: { source: 'server' } }
+// Указатель и сеть: наведение, протяжка, клик по видимой кнопке и обрыв запроса на другой
+// origin (localhost ↔ 127.0.0.1): с заголовком content-type такой запрос идёт с preflight.
+const LAB = page('Лаборатория', `
+<div id="hov" style="height: 40px">наведи</div>
+<div id="pad" style="height: 400px; background: #eee; touch-action: none">протяни</div>
+<button id="go">запрос</button><div id="r"></div>
+<div style="height: 3000px"></div>
+<script>
+  const hov = document.getElementById('hov')
+  hov.addEventListener('mouseenter', () => { hov.dataset.on = '1' })
+  const pad = document.getElementById('pad')
+  let y0 = null, y1 = null
+  pad.addEventListener('pointerdown', (e) => { y0 = y1 = e.clientY; pad.dataset.type = e.pointerType })
+  pad.addEventListener('pointermove', (e) => { if (y0 !== null) y1 = e.clientY })
+  pad.addEventListener('pointerup', () => { pad.dataset.dy = String(Math.round(y1 - y0)); y0 = null })
+  const other = location.hostname === 'localhost' ? '127.0.0.1' : 'localhost'
+  let ctl = null
+  document.getElementById('go').addEventListener('click', () => {
+    if (ctl) ctl.abort()
+    ctl = new AbortController()
+    fetch('http://' + other + ':' + location.port + '/api/slow', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}', signal: ctl.signal })
+      .then(r => r.text()).then((t) => { document.getElementById('r').textContent = t }).catch(() => {})
+  })
+</script>`)
+
+const OFFICES ={ offices: [{ city: 'Казань' }, { city: 'Воронеж' }], meta: { source: 'server' } }
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://127.0.0.1')
@@ -75,6 +100,11 @@ const server = http.createServer((req, res) => {
       return html(422, LOGIN)
     }
     if (url.pathname === '/favicon.ico') { res.writeHead(204); return res.end() }
+    if (url.pathname === '/lab') return html(200, LAB)
+    if (url.pathname === '/api/slow') {
+      const cors = { 'access-control-allow-origin': req.headers.origin ?? '*', 'access-control-allow-headers': 'content-type' }
+      return setTimeout(() => { res.writeHead(req.method === 'OPTIONS' ? 204 : 200, cors); res.end(req.method === 'OPTIONS' ? '' : 'done') }, 300)
+    }
     if (!authed) return redirect('/login')
     if (url.pathname === '/edit' && req.method === 'GET') return html(200, EDIT(url.searchParams.has('saved')))
     if (url.pathname === '/edit' && req.method === 'POST') return redirect('/edit?saved=1')

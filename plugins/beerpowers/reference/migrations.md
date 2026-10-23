@@ -462,3 +462,24 @@ Chrome вынесен из `cdp-screenshot.mjs`), новая `.claude/bin/cdp-sc
 (`explorer — haiku, параметром model вызова`). Роли там нет — update называет её в отчёте
 (`/beerpowers:doctor`, п. 8, проверяет то же), строку правит team-lead: это проектный текст
 вне engine-блоков.
+
+## → 2.10.0
+
+Исправления скриптов по эпику на живом проекте: `worktree-add` с базой голым именем ветки,
+мобильная эмуляция и указатель в `cdp-run.mjs`, маски полного прогона в `tests`. Engine-блоки
+не меняются.
+
+Копии: новые `.claude/bin/worktree-add` (база голым именем — `origin/<база>`, отказ, если базы
+нет нигде, проверка, что дерево встало на ветку задачи; `--copy-env` и `--no-deps` после `--`
+остаются флагами скрипта), `.claude/bin/cdp-run.mjs` (мобильный User-Agent у `mobile`, поле
+`userAgent`, шаги `hover` и `drag`, прокрутка только при центре вне вьюпорта или под перекрытием, preflight
+оборванного запроса не держит `networkIdle`), `.claude/bin/cdp-screenshot.mjs` и
+`.claude/bin/lib/chrome.mjs` (мобильный User-Agent), `.claude/reference/worktrees.md`.
+Настройки не менялись.
+
+Проектное: маски `tests.repos.<репо>.files` в `.claude/workspace.json` — весь набор раннера
+(`reference/parallel-tests.md`, «Изоляция процессов»). update сверяет их с конфигом тестов
+(`<testsuites>` в `phpunit.xml`, `testMatch` Jest) и называет в отчёте каталог набора, который
+маски не берут и `exclude` не называет; раздел `tests` не правит — решение за человеком.
+Тесты, которые идут через `exclude`, получают в `memory/commands/<скоуп>.md` свою форму полного
+прогона одним процессом — её тоже называет отчёт.

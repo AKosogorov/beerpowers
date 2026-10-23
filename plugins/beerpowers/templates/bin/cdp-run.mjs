@@ -18,15 +18,18 @@
 // Где искать Chrome — как у cdp-screenshot.mjs (там режим --find-chrome); личные флаги
 // запуска — переменная BEERPOWERS_CHROME_ARGS через пробел.
 //
-// Файл сценариев — массив сценариев или объект { baseUrl, timeout, network, console, mocks,
-// init, scenarios }: поля верхнего уровня — умолчания каждого сценария; mocks и init сценария
+// Файл сценариев — массив сценариев или объект { baseUrl, timeout, network, console, userAgent,
+// mocks, init, scenarios }: поля верхнего уровня — умолчания каждого сценария; mocks и init сценария
 // добавляются к общим, свои mocks — первыми.
 //
 // Поля сценария:
 //   name     — имя в выводе и в JSONL, по умолчанию s<номер>
 //   viewport — имя из viewports проекта (.claude/workspace.json): даёт width, height и mobile,
 //              явно заданные поля важнее; "*" — сценарий на каждую запись, имя получает @<имя>
-//   width, height, mobile — без viewport; mobile включает эмуляцию касаний
+//   width, height, mobile — без viewport; mobile включает эмуляцию касаний и мобильный
+//              User-Agent: тот же Chrome с платформой Android и пометкой Mobile, Client Hints
+//              тоже мобильные — сайты выбирают вёрстку по нему, а не по ширине
+//   userAgent — свой User-Agent строкой, важнее мобильного
 //   timeout  — предел ожидания шага, мс: по умолчанию 15000, у goto — вдвое больше
 //   init     — скрипт или массив скриптов, которые идут до кода каждой страницы (заглушки)
 //   mocks    — подмена ответов, см. ниже
@@ -38,8 +41,13 @@
 // Шаг — объект с одним действием (у любого шага — свой "timeout"):
 //   { "goto": "/path" }                     — переход, ждёт load; адрес от baseUrl
 //   { "click": "<css>", "hasText": "…" }    — первый видимый элемент (hasText — подстрока его
-//                                             текста); ждёт, пока элемент не перекрыт, и кликает
-//                                             мышью в центр, у mobile — касанием
+//                                             текста); ждёт, пока элемент не перекрыт и не движется,
+//                                             и кликает мышью в центр, у mobile — касанием.
+//                                             Прокручивает, только если центр элемента вне
+//                                             вьюпорта или перекрыт: тогда ставит его в центр
+//   { "hover": "<css>", "hasText": "…" }    — навести мышь в центр элемента, как у click, без нажатия
+//   { "drag": "<css>", "by": [dx, dy] }     — нажать в центре элемента и протянуть на dx, dy пикселей
+//                                             за 10 шагов: у mobile — касанием (свайп), иначе мышью
 //   { "type": "<css>", "text": "…" }        — фокус, выделить всё, ввести как с клавиатуры;
 //                                             "" очищает поле
 //   { "press": "Enter", "target": "<css>" } — клавиша; target сначала получает фокус
@@ -47,7 +55,8 @@
 //   { "wait": { <условие>, "timeout": мс } } — одно из условий:
 //       "selector": "<css>" (+ "hasText") — элемент виден;  "gone": "<css>" — видимых нет;
 //       "expr": "<выражение>" — истинно;  "url": "<подстрока>" — адрес страницы её содержит;
-//       "networkIdle": мс — столько мс ни одного запроса в полёте
+//       "networkIdle": мс — столько мс ни одного запроса в полёте; preflight оборванного
+//       запроса в полёте не считается
 //   { "eval": "<выражение>" }               — выполнить в странице, можно await
 //   { "capture": { имя: выражение } }       — значения в state сейчас, между шагами
 //   { "screenshot": "<файл>.png", "fullPage": true, "selector": "<css>" }
@@ -79,7 +88,7 @@ import { spawn } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { findChrome } from './lib/chrome.mjs'
+import { findChrome, mobileUserAgent } from './lib/chrome.mjs'
 import { findRoot, loadWorkspace } from './lib/workspace.mjs'
 
 const argv = process.argv.slice(2)
@@ -135,11 +144,11 @@ const problem = (where, msg) => problems.push(`${where}: ${msg}`)
 const isObject = v => v !== null && typeof v === 'object' && !Array.isArray(v)
 const asList = v => v === undefined ? [] : Array.isArray(v) ? v : [v]
 
-const TOP_KEYS = ['baseUrl', 'timeout', 'network', 'console', 'mocks', 'init', 'scenarios']
-const SCENARIO_KEYS = ['name', 'viewport', 'width', 'height', 'mobile', 'baseUrl', 'timeout', 'init', 'mocks', 'steps', 'state', 'network', 'console']
+const TOP_KEYS = ['baseUrl', 'timeout', 'network', 'console', 'userAgent', 'mocks', 'init', 'scenarios']
+const SCENARIO_KEYS = ['name', 'viewport', 'width', 'height', 'mobile', 'userAgent', 'baseUrl', 'timeout', 'init', 'mocks', 'steps', 'state', 'network', 'console']
 const STEP_KEYS = {
-  goto: [], click: ['hasText'], type: ['text', 'hasText'], press: ['target'], submit: ['hasText'],
-  wait: [], eval: [], capture: [], screenshot: ['fullPage', 'selector', 'hasText'],
+  goto: [], click: ['hasText'], hover: ['hasText'], drag: ['by', 'hasText'], type: ['text', 'hasText'],
+  press: ['target'], submit: ['hasText'], wait: [], eval: [], capture: [], screenshot: ['fullPage', 'selector', 'hasText'],
 }
 const WAIT_KEYS = ['selector', 'gone', 'expr', 'url', 'networkIdle']
 const KEYS = {
@@ -200,12 +209,13 @@ function checkStep(at, s, baseUrl) {
     problem(at, `${a} — непустая строка`)
   }
   if (a === 'type' && typeof s.text !== 'string') problem(at, 'type ждёт text — строку')
+  if (a === 'drag' && !(Array.isArray(s.by) && s.by.length === 2 && s.by.every(Number.isFinite))) problem(at, 'drag ждёт by — [dx, dy] в пикселях')
   if (a === 'press' && !(v in KEYS)) problem(at, `клавиша ${v} неизвестна: ${Object.keys(KEYS).join(', ')}`)
   if (a === 'screenshot' && !String(v).endsWith('.png')) problem(at, 'screenshot — имя файла .png')
   if (a === 'goto' && typeof v === 'string' && !/^[a-z][a-z0-9+.-]*:/i.test(v) && !baseUrl) problem(at, `относительный адрес ${v} без baseUrl и --base-url`)
 }
 
-const defaults = { timeout: top.timeout ?? 15000, network: top.network, console: top.console }
+const defaults = { timeout: top.timeout ?? 15000, network: top.network, console: top.console, userAgent: top.userAgent }
 const topMocks = checkMocks('файл', top.mocks ?? [])
 const scenarios = []
 for (const [i, raw] of top.scenarios.entries()) {
@@ -224,6 +234,7 @@ for (const [i, raw] of top.scenarios.entries()) {
   else raw.steps.forEach((s, j) => checkStep(`${at}.steps[${j}]`, s, sc.baseUrl))
   if ('state' in raw && !(isObject(raw.state) && Object.values(raw.state).every(e => typeof e === 'string'))) problem(at, 'state — { имя: выражение }')
   for (const k of ['network', 'console']) if (sc[k] !== undefined && sc[k] !== 'all') problem(at, `${k} — только "all"`)
+  if (sc.userAgent !== undefined && (typeof sc.userAgent !== 'string' || !sc.userAgent)) problem(at, 'userAgent — непустая строка')
   if (raw.viewport === '*') {
     for (const vp of project().viewports) scenarios.push({ ...sc, name: `${name}@${vp.name}`, viewport: vp.name, width: vp.width, height: vp.height, mobile: vp.mobile })
   } else if (raw.viewport !== undefined) {
@@ -495,6 +506,12 @@ async function runScenario(sc) {
     })
   }
 
+  const settle = (id) => {
+    inflight.delete(id)
+    for (const [k, v] of inflight) if (v.parent === id) inflight.delete(k)
+    lastNet = Date.now()
+  }
+
   const onEvent = (msg) => {
     if (msg.sessionId !== sessionId || !sessionId) return
     const p = msg.params
@@ -521,7 +538,11 @@ async function runScenario(sc) {
           step, method: p.request.method, url: p.request.url, finalUrl: p.request.url, status: null,
           redirects: [], type: p.type ?? null, mocked: null, failed: null,
         })
-        if (p.type !== 'EventSource' && p.type !== 'WebSocket') inflight.set(p.requestId, p.request.url)
+        // Preflight оборванного запроса Chrome не завершает ни одним событием: он в полёте,
+        // пока в полёте его запрос, и уходит вместе с ним.
+        const parent = p.initiator?.type === 'preflight' ? p.initiator.requestId ?? null : null
+        const orphan = parent && requests.has(parent) && !inflight.has(parent)
+        if (p.type !== 'EventSource' && p.type !== 'WebSocket' && !orphan) inflight.set(p.requestId, { url: p.request.url, parent })
         lastNet = Date.now()
         break
       }
@@ -531,14 +552,12 @@ async function runScenario(sc) {
         break
       }
       case 'Network.loadingFinished':
-        inflight.delete(p.requestId)
-        lastNet = Date.now()
+        settle(p.requestId)
         break
       case 'Network.loadingFailed': {
         const e = requests.get(p.requestId)
         if (e) e.failed = p.errorText
-        inflight.delete(p.requestId)
-        lastNet = Date.now()
+        settle(p.requestId)
         break
       }
       case 'Fetch.requestPaused':
@@ -547,25 +566,42 @@ async function runScenario(sc) {
     }
   }
 
-  async function click(s, timeout) {
+  // Точка для указателя — центр элемента. Прокрутка — только когда центр вне вьюпорта или
+  // перекрыт (липкая шапка у края): лишняя прокрутка сдвигает scrollY, а его меряют сценарии. Элемент в движении (анимация, плавная
+  // прокрутка контейнера) ждётся, пока два замера подряд не совпадут: иначе нажатие придёт
+  // по устаревшим координатам в соседний элемент.
+  async function point(sel, hasText, timeout, enabled) {
     let why = 'видимого элемента нет'
-    const at = await poll(async () => {
+    let last = null
+    return poll(async () => {
       const v = await evaluate(`(() => {
-        const el = ${find(s.click, s.hasText)}
+        const el = ${find(sel, hasText)}
         if (!el) return { why: 'видимого элемента нет' }
-        el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' })
-        const r = el.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2
+        const center = () => { const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 } }
+        const covered = (x, y) => { const h = document.elementFromPoint(x, y); return !h || (h !== el && !el.contains(h)) }
+        let { x, y } = center()
+        if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight || covered(x, y)) {
+          el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
+          ({ x, y } = center())
+        }
         const hit = document.elementFromPoint(x, y)
-        if (!hit || (hit !== el && !el.contains(hit))) {
+        if (covered(x, y)) {
           const cls = hit && typeof hit.className === 'string' ? hit.className.trim().split(/\\s+/).filter(Boolean).map(c => '.' + c).join('') : ''
           return { why: 'перекрыт: ' + (hit ? hit.tagName.toLowerCase() + (hit.id ? '#' + hit.id : '') + cls : 'точка вне страницы') }
         }
-        if (el.disabled) return { why: 'disabled' }
+        if (${Boolean(enabled)} && el.disabled) return { why: 'disabled' }
         return { x, y }
       })()`)
-      if (v.why) { why = v.why; return null }
-      return v
+      if (v.why) { why = v.why; last = null; return null }
+      const still = last && last.x === v.x && last.y === v.y
+      if (last && !still) why = 'движется'
+      last = v
+      return still ? v : null
     }, timeout, () => why)
+  }
+
+  async function click(s, timeout) {
+    const at = await point(s.click, s.hasText, timeout, true)
     if (sc.mobile) {
       await S('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: at.x, y: at.y }] })
       await S('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
@@ -574,6 +610,31 @@ async function runScenario(sc) {
     await S('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y })
     await S('Input.dispatchMouseEvent', { type: 'mousePressed', x: at.x, y: at.y, button: 'left', buttons: 1, clickCount: 1 })
     await S('Input.dispatchMouseEvent', { type: 'mouseReleased', x: at.x, y: at.y, button: 'left', buttons: 0, clickCount: 1 })
+  }
+
+  // Протяжка — 10 промежуточных точек через кадр (16 мс): библиотеки жестов считают скорость,
+  // и прыжок одной точкой в конец свайпом для них не выглядит.
+  async function drag(s, timeout) {
+    const at = await point(s.drag, s.hasText, timeout, false)
+    const [dx, dy] = s.by
+    const N = 10
+    const p = k => ({ x: at.x + dx * k / N, y: at.y + dy * k / N })
+    if (sc.mobile) {
+      await S('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [at] })
+      for (let k = 1; k <= N; k++) {
+        await sleep(16)
+        await S('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [p(k)] })
+      }
+      await S('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+      return
+    }
+    await S('Input.dispatchMouseEvent', { type: 'mouseMoved', ...at })
+    await S('Input.dispatchMouseEvent', { type: 'mousePressed', ...at, button: 'left', buttons: 1, clickCount: 1 })
+    for (let k = 1; k <= N; k++) {
+      await sleep(16)
+      await S('Input.dispatchMouseEvent', { type: 'mouseMoved', ...p(k), button: 'left', buttons: 1 })
+    }
+    await S('Input.dispatchMouseEvent', { type: 'mouseReleased', ...p(N), button: 'left', buttons: 0, clickCount: 1 })
   }
 
   const focus = (sel, hasText, timeout, s) => poll(() => evaluate(`(() => {
@@ -602,6 +663,11 @@ async function runScenario(sc) {
       if (nav.loaderId) await poll(() => loads > before, s.timeout ?? sc.timeout * 2, () => 'события load')
     } else if ('click' in s) {
       await click(s, timeout)
+    } else if ('hover' in s) {
+      const at = await point(s.hover, s.hasText, timeout, false)
+      await S('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y })
+    } else if ('drag' in s) {
+      await drag(s, timeout)
     } else if ('type' in s) {
       await focus(s.type, s.hasText, timeout, s)
       if (s.text === '') await press('Backspace')
@@ -622,7 +688,7 @@ async function runScenario(sc) {
       const t = w.timeout ?? timeout
       if ('networkIdle' in w) {
         await poll(() => !inflight.size && Date.now() - lastNet >= w.networkIdle, t,
-          () => `в полёте ${[...inflight.values()].slice(0, 3).join(', ')}`)
+          () => `в полёте ${[...inflight.values()].slice(0, 3).map(v => v.url).join(', ')}`)
       } else {
         const expr = 'selector' in w ? `Boolean(${find(w.selector, w.hasText)})`
           : 'gone' in w ? `!${find(w.gone, w.hasText)}`
@@ -669,6 +735,8 @@ async function runScenario(sc) {
     for (const domain of ['Page', 'Runtime', 'Network', 'Log']) await S(`${domain}.enable`)
     await S('Emulation.setDeviceMetricsOverride', { width: sc.width, height: sc.height, deviceScaleFactor: 1, mobile: Boolean(sc.mobile) })
     if (sc.mobile) await S('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 })
+    if (sc.userAgent) await S('Emulation.setUserAgentOverride', { userAgent: sc.userAgent })
+    else if (sc.mobile) await S('Emulation.setUserAgentOverride', mobileUserAgent(version.userAgent))
     for (const source of sc.init) await S('Page.addScriptToEvaluateOnNewDocument', { source })
     if (sc.mocks.length) {
       await S('Fetch.enable', { patterns: sc.mocks.map(m => ({ urlPattern: m.url, requestStage: m.mergePatch ? 'Response' : 'Request' })) })
