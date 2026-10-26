@@ -12,6 +12,10 @@
 //   node .claude/bin/mutants.mjs <мутанты.json> --dry-run         # что пойдёт, что из кеша
 //   node .claude/bin/mutants.mjs <мутанты.json> --workers 4       # не больше 4 слотов
 //   node .claude/bin/mutants.mjs --clean                          # убрать копии деревьев
+//   node .claude/bin/mutants.mjs --clean --dry-run                # какие копии убрал бы, какие заняты
+//
+// Копию, чей слот держит идущий прогон mutants, --clean пропускает. Его же зовёт
+// .claude/bin/workspace-clean cache вместе с уборкой остального кеша.
 //
 // Файл мутантов лежит во временном каталоге роли, а не в memory/tasks/<КОД>/: в память идёт
 // только таблица, которую печатает инструмент. Формат:
@@ -196,11 +200,11 @@ async function clean(root) {
   for (const name of names) {
     const m = name.match(/-s(\d+)$/);
     if (m && held.has(Number(m[1])) && held.get(Number(m[1])).tool === 'mutants') { say(`занята: ${name} — слот держит pid ${held.get(Number(m[1])).pid}`); continue; }
-    removeCopy(path.join(dir, name));
-    say(`убрана: ${name}`);
+    if (opts.dryRun) say(`убрал бы: ${name}`);
+    else { removeCopy(path.join(dir, name)); say(`убрана: ${name}`); }
     removed++;
   }
-  say(`копий убрано: ${removed}`);
+  say(`копий ${opts.dryRun ? 'убрал бы' : 'убрано'}: ${removed}`);
 }
 
 function prepareCopy({ root, repo, base, slot, cfg }) {

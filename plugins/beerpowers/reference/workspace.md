@@ -154,6 +154,27 @@ teardown только называется — человек, одобряющ�
 `$CLAUDE_PROJECT_DIR` — хук молча пропускает всё: барьеры действуют только в проектах
 с командой.
 
+### Кеш `.claude/.cache/`
+
+Каталог под gitignore, общий для скриптов, хуков и команд движка. Сам он не ограничен ничем:
+что копится от прогонов, убирает `.claude/bin/workspace-clean cache` (сухой прогон, удаление —
+с `--apply`; порог возраста — `--keep-days`, по умолчанию 7). Её зовёт последним шагом
+[`/beerpowers:worktrees-clear`](../commands/worktrees-clear.md), а `doctor` подсказывает,
+когда кеш разросся.
+
+| Путь в `.claude/.cache/` | Кто пишет | `workspace-clean cache` |
+|---|---|---|
+| `mutants/<репо>-s<слот>/` — копии деревьев, зарегистрированные `git worktree` | `mutants.mjs` | убирает через `mutants.mjs --clean`, кроме копии на слоте идущего прогона |
+| `parallel-tests/runs/<время>-<pid>/` — логи и junit прогонов | `parallel-tests.mjs` (прогоны старше 7 дней убирает и сам при запуске) | убирает старше порога, кроме прогона с живым pid |
+| `parallel-tests/<репо>.junit.xml` — длительности тестов для раскладки | `parallel-tests.mjs` | не трогает никогда |
+| `screenshots-reminder/<сессия>/` — метки старта роли-тестера | хук `screenshots-reminder.sh` | убирает старше порога |
+| `comment-guard`, `push-lost`, `user-files-window/` | барьеры плагина | не трогает, называет |
+| `task-start/`, `tracker/` | `/beerpowers:task-start`, адаптер записи в трекер | не трогает, называет |
+| всё остальное | люди и роли | не трогает, называет «не моё» |
+
+Новый писатель в кеш — новая строка здесь и, если его следы копятся, форма в
+`workspace-clean cache`.
+
 ## `.claude/git-settings.json` и `.claude/git-settings.local.json`
 
 Git-настройки — отдельно от `workspace.json`, двумя файлами по тому же принципу, что

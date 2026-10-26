@@ -127,6 +127,7 @@ worktrees/<КОД-ЗАДАЧИ>/<имя-репозитория>/
 .claude/bin/workspace-clean orphans --orphan --apply       # каталоги в worktrees/, о которых git не знает
 .claude/bin/workspace-clean output                         # .output во всех репозиториях и worktree
 .claude/bin/workspace-clean task <КОД-ЗАДАЧИ>              # figma/ и screenshots/ задачи, пустая папка
+.claude/bin/workspace-clean cache                          # копии мутантов, старые прогоны тестов в .claude/.cache
 ```
 
 `rm -rf` остаётся в `deny`: маска разрешений матчит префикс команды, и любое послабление

@@ -144,7 +144,12 @@ if has "$out" '^M3 calc src/rule.txt — ошибка применения' && h
   ok "--dry-run — план"
 else ko "--dry-run — план" "$out"; fi
 
-# 9. --clean убирает копии, vendor базы цел (ссылка снята до удаления дерева).
+# 9. --clean --dry-run только называет копии; --clean убирает их, vendor базы цел (ссылка снята
+# до удаления дерева).
+out=$(mt --clean --dry-run)
+if has "$out" '^убрал бы: calc-s1' && has "$out" 'копий убрал бы: 2' && [ -d "$ws/.claude/.cache/mutants/calc-s1" ]; then
+  ok "--clean --dry-run — копии названы и на месте"
+else ko "--clean --dry-run — копии названы и на месте" "$out"; fi
 out=$(mt --clean)
 if has "$out" 'копий убрано: 2' && [ -f "$base/vendor/marker" ] && [ -z "$(ls "$ws/.claude/.cache/mutants" 2>/dev/null)" ] && [ -z "$(git -C "$base" worktree list --porcelain | grep 'mutants')" ]; then
   ok "--clean — копии убраны, vendor базы на месте, worktree сняты"
