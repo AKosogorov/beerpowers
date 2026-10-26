@@ -166,7 +166,8 @@ description: Проверить, что команда работает на э�
     - кеш прогонов: размер `.claude/.cache/mutants` (`du -sm`; ссылки на `vendor` и
       `node_modules` `du` не обходит) и число каталогов в `.claude/.cache/parallel-tests/runs`.
       Больше 500 МБ или больше 20 прогонов — **warn** с фиксом
-      `.claude/bin/workspace-clean cache` (сухой прогон, затем `--apply`);
+      `.claude/bin/workspace-clean cache` (сухой прогон, затем `--apply`); прогоны моложе семи
+      дней он оставляет, поэтому при их избытке фикс — с `--keep-days <дней>`;
     - скопирован `make-shim` — `.claude/bin/make-shim --version` отрабатывает (`make` найден);
     - скопирован `yandex-tracker`, `yandex-tracker-write.mjs` или `figma-export` — их `--help` отвечает, а токен в личных
       настройках есть (значение не печатать, только факт наличия);
