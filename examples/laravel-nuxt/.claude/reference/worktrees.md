@@ -127,8 +127,12 @@ worktrees/<КОД-ЗАДАЧИ>/<имя-репозитория>/
 .claude/bin/workspace-clean orphans --orphan --apply       # каталоги в worktrees/, о которых git не знает
 .claude/bin/workspace-clean output                         # .output во всех репозиториях и worktree
 .claude/bin/workspace-clean task <КОД-ЗАДАЧИ>              # figma/ и screenshots/ задачи, пустая папка
-.claude/bin/workspace-clean cache                          # копии мутантов, старые прогоны тестов в .claude/.cache
+.claude/bin/workspace-clean cache                          # только кеш .claude/.cache
 ```
+
+Каждый вызов `workspace-clean` в конце убирает и кеш `.claude/.cache`: копии деревьев мутантов,
+прогоны тестов и состояние хуков старше `--keep-days` (по умолчанию 7) — сухо в сухом прогоне,
+по-настоящему с `--apply`. Занятое идущими прогонами пропускается; `--no-cache` — кеш не трогать.
 
 `rm -rf` остаётся в `deny`: маска разрешений матчит префикс команды, и любое послабление
 открыло бы удаление чего угодно. Скрипт удаляет только по белому списку форм пути —

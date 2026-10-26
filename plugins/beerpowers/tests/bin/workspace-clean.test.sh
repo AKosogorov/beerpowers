@@ -1,5 +1,5 @@
 #!/bin/sh
-# workspace-clean cache на одноразовом workspace: копия мутантов на свободном слоте и на слоте,
+# Уборка кеша workspace-clean — формой cache и хвостом другой формы — на одноразовом workspace: копия мутантов на свободном слоте и на слоте,
 # который держит живой прогон mutants; прогоны parallel-tests старше порога, свежий и с живым pid;
 # состояние напоминания о скриншотах; junit, состояние барьера и чужой файл в корне кеша.
 # Сухой прогон ничего не удаляет, --apply удаляет только своё и снимает регистрацию worktree.
@@ -82,13 +82,22 @@ else ko "сухой прогон — позиции с причинами, ни�
 # 2. Флаги: цель у cache и --keep-days у другого режима — отказ.
 out=$(wc_ cache extra)
 if [ $? != 0 ] && has "$out" 'у cache нет цели'; then ok "cache с целью — отказ"; else ko "cache с целью — отказ" "$out"; fi
-out=$(wc_ output --keep-days 3)
-if [ $? != 0 ] && has "$out" '--keep-days — только у cache'; then ok "--keep-days не у cache — отказ"; else ko "--keep-days не у cache — отказ" "$out"; fi
+out=$(wc_ cache --no-cache)
+if [ $? != 0 ] && has "$out" 'уборка кеша без уборки кеша'; then ok "cache --no-cache — отказ"; else ko "cache --no-cache — отказ" "$out"; fi
+
+# 2а. Другая форма — уборка кеша хвостом, в сухом прогоне сухая; --no-cache её выключает.
+out=$(wc_ output)
+if [ $? = 0 ] && all_there && has "$out" 'кеш .claude/.cache (--no-cache — без него):' \
+  && has "$out" 'удалил бы: .claude/.cache/mutants/calc-s1' && has "$out" 'итог: копий мутантов убрал бы 1'; then
+  ok "output — кеш хвостом, сухо"
+else ko "output — кеш хвостом, сухо" "$out"; fi
+out=$(wc_ output --no-cache)
+if [ $? = 0 ] && ! has "$out" '.claude/.cache'; then ok "output --no-cache — кеш не тронут"; else ko "output --no-cache — кеш не тронут" "$out"; fi
 out=$(wc_ cache --keep-days x)
 if [ $? != 0 ] && has "$out" 'ждётся целое число дней'; then ok "--keep-days не число — отказ"; else ko "--keep-days не число — отказ" "$out"; fi
 
-# 3. --apply: только свободная копия, старый мёртвый прогон и старое состояние.
-out=$(wc_ cache --apply)
+# 3. --apply другой формы: из кеша — только свободная копия, старый мёртвый прогон и старое состояние.
+out=$(wc_ output --apply)
 code=$?
 if [ "$code" = 0 ] && [ ! -e "$cache/mutants/calc-s1" ] && [ -d "$cache/mutants/calc-s2" ] \
   && [ ! -e "$runs/20200101-000000-999999" ] && [ -d "$runs/20200101-000000-$pid" ] && [ -d "$runs/20991231-000000-999998" ] && [ -d "$runs/stray" ] \
