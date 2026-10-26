@@ -9,12 +9,16 @@
 #     .claude/bin/workspace-clean output <КОД>            # .output только в worktrees/<КОД>/*
 #     .claude/bin/workspace-clean output <имя-репо>       # .output только в основном каталоге репозитория
 #     .claude/bin/workspace-clean task <КОД>              # медиа задачи в memory/tasks/<КОД>/, пустой каталог задачи
-#     .claude/bin/workspace-clean cache                   # копии мутантов, старые прогоны тестов и состояние хуков в .claude/.cache
-#     .claude/bin/workspace-clean cache --keep-days 3     # порог возраста прогонов и состояния, дней (по умолчанию 7)
+#     .claude/bin/workspace-clean cache                   # только кеш .claude/.cache
 #     .claude/bin/workspace-clean worktree <КОД> --apply
 #
 # По умолчанию — **сухой прогон**: печатает, что удалил бы. Реальное удаление
 # только с --apply.
+#
+# Каждый вызов, любой формы, в конце убирает и кеш .claude/.cache (см. ниже, `cache`) —
+# в сухом прогоне сухо, с --apply по-настоящему. Флаги кеша, у любой формы:
+#     --keep-days <дней>   порог возраста прогонов тестов и состояния хуков (по умолчанию 7)
+#     --no-cache           кеш не трогать
 #
 # Раскладка — константы движка: рабочие деревья задач —
 # worktrees/<КОД>/<имя-репо>/, медиа задачи под gitignore — фреймы Figma
@@ -57,7 +61,8 @@
 # не убирает, и каталог задачи остаётся висеть. Каталог задачи удаляется, только если
 # после уборки медиа в нём не осталось ни одного файла.
 #
-# `cache` убирает в .claude/.cache то, что копится от прогонов, и только это:
+# Уборка кеша — она же форма `cache` без остального — убирает в .claude/.cache то, что копится
+# от прогонов, и только это:
 #   * копии деревьев мутантов (.claude/.cache/mutants/) — зовёт `mutants.mjs --clean`: он
 #     снимает регистрацию git worktree и пропускает слот, который держит идущий прогон.
 #     Убранную копию следующий прогон мутантов пересоздаст — теряется время подготовки, не данные;
@@ -87,6 +92,7 @@ apply=0
 orphan_ok=0
 merged_anyway=0
 keep_days=""
+no_cache=0
 mode=""
 target=""
 
@@ -102,6 +108,7 @@ while [ $# -gt 0 ]; do
             case "$1" in ""|*[!0-9]*) die "--keep-days: ждётся целое число дней, а не «$1»" ;; esac
             keep_days=$1
             ;;
+        --no-cache) no_cache=1 ;;
         -*) die "неизвестный флаг: $1 (см. --help)" ;;
         worktree|orphans|output|task|cache)
             [ -z "$mode" ] || die "режим уже задан: $mode"
@@ -117,7 +124,8 @@ while [ $# -gt 0 ]; do
 done
 
 [ -n "$mode" ] || { usage; exit 1; }
-[ -z "$keep_days" ] || [ "$mode" = "cache" ] || die "--keep-days — только у cache"
+[ "$no_cache" = "0" ] || [ "$mode" != "cache" ] || die "cache --no-cache — уборка кеша без уборки кеша"
+[ -z "$keep_days" ] || [ "$no_cache" = "0" ] || die "--keep-days — порог уборки кеша, а --no-cache её выключает"
 
 ws_load || exit 1
 root=$(ws_root)
@@ -492,119 +500,131 @@ $tracked"
 
     cache)
         [ -z "$target" ] || die "у cache нет цели: workspace-clean cache [--keep-days <дней>] [--apply]"
-        cache=.claude/.cache
-        days=${keep_days:-7}
-        [ -d "$root/$cache" ] || { echo "каталога $cache нет — убирать нечего"; exit 0; }
-        for d in "$cache" "$cache/mutants" "$cache/parallel-tests" "$cache/parallel-tests/runs" "$cache/screenshots-reminder"; do
-            if [ -L "$root/$d" ]; then
-                die "отказ: $d — символьная ссылка, уборка по ней ушла бы за пределы кеша"
-            fi
-        done
-        verb="убрано"
-        [ "$apply" = "1" ] || verb="убрал бы"
-        status=0
-
-        # Копии мутантов — их собственной уборкой: проверка занятых слотов и снятие
-        # регистрации git worktree живут в mutants.mjs, второй копии этой логики здесь нет.
-        mut_gone=0
-        mut_busy=0
-        if [ -n "$(ls -A "$root/$cache/mutants" 2>/dev/null)" ]; then
-            if [ -f "$self_dir/mutants.mjs" ]; then
-                dry=--dry-run
-                [ "$apply" = "1" ] && dry=""
-                # shellcheck disable=SC2086
-                if mout=$(node "$self_dir/mutants.mjs" --clean $dry 2>&1); then
-                    printf '%s\n' "$mout" | sed -n "s|^убрал бы: |удалил бы: $cache/mutants/|p; s|^убрана: |удалено: $cache/mutants/|p; s|^занята: |занята: $cache/mutants/|p"
-                    mut_gone=$(printf '%s\n' "$mout" | grep -c '^убра' || true)
-                    mut_busy=$(printf '%s\n' "$mout" | grep -c '^занята:' || true)
-                else
-                    status=1
-                    printf 'копии мутантов не убраны — mutants.mjs --clean завершился с ошибкой:\n%s\n' "$(printf '%s\n' "$mout" | sed 's/^/  /')"
-                fi
-            else
-                printf 'не трогаю: %s/mutants — копии .claude/bin/mutants.mjs нет, а снимать копии умеет только она\n' "$cache"
-            fi
-        fi
-
-        # Прогоны parallel-tests: каталог <время>-<pid>. Идущий прогон пишет туда логи, поэтому
-        # прогон с живым pid остаётся при любом возрасте. Живость — у node: pid в имени —
-        # системный, а kill -0 Git Bash видит только свои процессы.
-        runs="$cache/parallel-tests/runs"
-        runs_gone=0
-        runs_live=0
-        runs_fresh=0
-        if [ -d "$root/$runs" ]; then
-            old=$(cd -- "$root/$runs" && find . -mindepth 1 -maxdepth 1 -type d -mmin "+$((days * 1440))" | sed 's|^\./||' | sort)
-            all=$(cd -- "$root/$runs" && find . -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')
-            pids=$(printf '%s\n' "$old" | sed -n 's/^.*-\([0-9][0-9]*\)$/\1/p')
-            live=" "
-            if [ -n "$pids" ]; then
-                # shellcheck disable=SC2086
-                live=" $(node -e 'for (const p of process.argv.slice(1)) { try { process.kill(Number(p), 0); console.log(p); } catch (e) { if (e.code === "EPERM") console.log(p); } }' $pids | tr '\n' ' ')"
-            fi
-            n_old=0
-            while IFS= read -r name; do
-                [ -n "$name" ] || continue
-                n_old=$((n_old + 1))
-                pid=$(printf '%s\n' "$name" | sed -n 's/^.*-\([0-9][0-9]*\)$/\1/p')
-                if ! is_name "$name" || [ -z "$pid" ]; then
-                    printf 'не трогаю: %s/%s — имя не в форме <время>-<pid>\n' "$runs" "$name"
-                    continue
-                fi
-                case "$live" in
-                    *" $pid "*)
-                        printf 'идёт: %s/%s — pid %s жив\n' "$runs" "$name" "$pid"
-                        runs_live=$((runs_live + 1))
-                        continue
-                        ;;
-                esac
-                remove_tree "$runs/$name"
-                runs_gone=$((runs_gone + 1))
-            done <<EOF
-$old
-EOF
-            runs_fresh=$((all - n_old))
-        fi
-        if [ -n "$(ls "$root/$cache/parallel-tests"/*.junit.xml 2>/dev/null)" ]; then
-            printf 'не трогаю: %s/parallel-tests/*.junit.xml — длительности тестов для раскладки\n' "$cache"
-        fi
-
-        state="$cache/screenshots-reminder"
-        state_gone=0
-        if [ -d "$root/$state" ]; then
-            old=$(cd -- "$root/$state" && find . -mindepth 1 -maxdepth 1 -type d -mmin "+$((days * 1440))" | sed 's|^\./||' | sort)
-            while IFS= read -r name; do
-                [ -n "$name" ] || continue
-                if ! is_name "$name"; then
-                    printf 'не трогаю: %s/%s — имя не похоже на идентификатор сессии\n' "$state" "$name"
-                    continue
-                fi
-                remove_tree "$state/$name"
-                state_gone=$((state_gone + 1))
-            done <<EOF
-$old
-EOF
-        fi
-
-        # Корень кеша: своё состояние барьеров и команд — не мусор, чужое — не моё.
-        kept=""
-        foreign=""
-        for e in "$root/$cache"/* "$root/$cache"/.[!.]*; do
-            [ -e "$e" ] || [ -L "$e" ] || continue
-            n=$(basename -- "$e")
-            case "$n" in
-                mutants|parallel-tests|screenshots-reminder) ;;
-                comment-guard|push-lost|user-files-window|task-start|tracker) kept="$kept $n" ;;
-                *) foreign="$foreign $n" ;;
-            esac
-        done
-        [ -z "$kept" ] || printf 'не трогаю: состояние барьеров и команд —%s\n' "$kept"
-        [ -z "$foreign" ] || printf 'не моё, не трогаю:%s\n' "$foreign"
-
-        printf 'итог: копий мутантов %s %s (заняты прогоном: %s), прогонов тестов %s %s (идут: %s, моложе %s дн.: %s), каталогов состояния %s %s\n' \
-            "$verb" "$mut_gone" "$mut_busy" "$verb" "$runs_gone" "$runs_live" "$days" "$runs_fresh" "$verb" "$state_gone"
-        [ "$status" = "0" ] || exit "$status"
         ;;
 esac
 
+# Кеш — хвост каждого вызова, не только формы cache: копии мутантов и логи прогонов
+# копятся от работы над задачами, и уборка, о которой надо помнить, не случается.
+# Сухой прогон формы — сухой и здесь; --no-cache выключает хвост.
+cache=.claude/.cache
+cache_status=0
+if [ "$no_cache" = "1" ]; then
+    :
+elif [ ! -d "$root/$cache" ]; then
+    [ "$mode" != "cache" ] || echo "каталога $cache нет — убирать нечего"
+else
+    [ "$mode" = "cache" ] || printf '\nкеш %s (--no-cache — без него):\n' "$cache"
+    days=${keep_days:-7}
+    for d in "$cache" "$cache/mutants" "$cache/parallel-tests" "$cache/parallel-tests/runs" "$cache/screenshots-reminder"; do
+        if [ -L "$root/$d" ]; then
+            die "отказ: $d — символьная ссылка, уборка по ней ушла бы за пределы кеша"
+        fi
+    done
+    verb="убрано"
+    [ "$apply" = "1" ] || verb="убрал бы"
+    status=0
+
+    # Копии мутантов — их собственной уборкой: проверка занятых слотов и снятие
+    # регистрации git worktree живут в mutants.mjs, второй копии этой логики здесь нет.
+    mut_gone=0
+    mut_busy=0
+    if [ -n "$(ls -A "$root/$cache/mutants" 2>/dev/null)" ]; then
+        if [ -f "$self_dir/mutants.mjs" ]; then
+            dry=--dry-run
+            [ "$apply" = "1" ] && dry=""
+            # shellcheck disable=SC2086
+            if mout=$(node "$self_dir/mutants.mjs" --clean $dry 2>&1); then
+                printf '%s\n' "$mout" | sed -n "s|^убрал бы: |удалил бы: $cache/mutants/|p; s|^убрана: |удалено: $cache/mutants/|p; s|^занята: |занята: $cache/mutants/|p"
+                mut_gone=$(printf '%s\n' "$mout" | grep -c '^убра' || true)
+                mut_busy=$(printf '%s\n' "$mout" | grep -c '^занята:' || true)
+            else
+                status=1
+                printf 'копии мутантов не убраны — mutants.mjs --clean завершился с ошибкой:\n%s\n' "$(printf '%s\n' "$mout" | sed 's/^/  /')"
+            fi
+        else
+            printf 'не трогаю: %s/mutants — копии .claude/bin/mutants.mjs нет, а снимать копии умеет только она\n' "$cache"
+        fi
+    fi
+
+    # Прогоны parallel-tests: каталог <время>-<pid>. Идущий прогон пишет туда логи, поэтому
+    # прогон с живым pid остаётся при любом возрасте. Живость — у node: pid в имени —
+    # системный, а kill -0 Git Bash видит только свои процессы.
+    runs="$cache/parallel-tests/runs"
+    runs_gone=0
+    runs_live=0
+    runs_fresh=0
+    if [ -d "$root/$runs" ]; then
+        old=$(cd -- "$root/$runs" && find . -mindepth 1 -maxdepth 1 -type d -mmin "+$((days * 1440))" | sed 's|^\./||' | sort)
+        all=$(cd -- "$root/$runs" && find . -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')
+        pids=$(printf '%s\n' "$old" | sed -n 's/^.*-\([0-9][0-9]*\)$/\1/p')
+        live=" "
+        if [ -n "$pids" ]; then
+            # shellcheck disable=SC2086
+            live=" $(node -e 'for (const p of process.argv.slice(1)) { try { process.kill(Number(p), 0); console.log(p); } catch (e) { if (e.code === "EPERM") console.log(p); } }' $pids | tr '\n' ' ')"
+        fi
+        n_old=0
+        while IFS= read -r name; do
+            [ -n "$name" ] || continue
+            n_old=$((n_old + 1))
+            pid=$(printf '%s\n' "$name" | sed -n 's/^.*-\([0-9][0-9]*\)$/\1/p')
+            if ! is_name "$name" || [ -z "$pid" ]; then
+                printf 'не трогаю: %s/%s — имя не в форме <время>-<pid>\n' "$runs" "$name"
+                continue
+            fi
+            case "$live" in
+                *" $pid "*)
+                    printf 'идёт: %s/%s — pid %s жив\n' "$runs" "$name" "$pid"
+                    runs_live=$((runs_live + 1))
+                    continue
+                    ;;
+            esac
+            remove_tree "$runs/$name"
+            runs_gone=$((runs_gone + 1))
+        done <<EOF
+$old
+EOF
+        runs_fresh=$((all - n_old))
+    fi
+    if [ -n "$(ls "$root/$cache/parallel-tests"/*.junit.xml 2>/dev/null)" ]; then
+        printf 'не трогаю: %s/parallel-tests/*.junit.xml — длительности тестов для раскладки\n' "$cache"
+    fi
+
+    state="$cache/screenshots-reminder"
+    state_gone=0
+    if [ -d "$root/$state" ]; then
+        old=$(cd -- "$root/$state" && find . -mindepth 1 -maxdepth 1 -type d -mmin "+$((days * 1440))" | sed 's|^\./||' | sort)
+        while IFS= read -r name; do
+            [ -n "$name" ] || continue
+            if ! is_name "$name"; then
+                printf 'не трогаю: %s/%s — имя не похоже на идентификатор сессии\n' "$state" "$name"
+                continue
+            fi
+            remove_tree "$state/$name"
+            state_gone=$((state_gone + 1))
+        done <<EOF
+$old
+EOF
+    fi
+
+    # Корень кеша: своё состояние барьеров и команд — не мусор, чужое — не моё.
+    kept=""
+    foreign=""
+    for e in "$root/$cache"/* "$root/$cache"/.[!.]*; do
+        [ -e "$e" ] || [ -L "$e" ] || continue
+        n=$(basename -- "$e")
+        case "$n" in
+            mutants|parallel-tests|screenshots-reminder) ;;
+            comment-guard|push-lost|user-files-window|task-start|tracker) kept="$kept $n" ;;
+            *) foreign="$foreign $n" ;;
+        esac
+    done
+    [ -z "$kept" ] || printf 'не трогаю: состояние барьеров и команд —%s\n' "$kept"
+    [ -z "$foreign" ] || printf 'не моё, не трогаю:%s\n' "$foreign"
+
+    printf 'итог: копий мутантов %s %s (заняты прогоном: %s), прогонов тестов %s %s (идут: %s, моложе %s дн.: %s), каталогов состояния %s %s\n' \
+        "$verb" "$mut_gone" "$mut_busy" "$verb" "$runs_gone" "$runs_live" "$days" "$runs_fresh" "$verb" "$state_gone"
+    cache_status=$status
+fi
+
 [ "$apply" = "1" ] || printf '\nсухой прогон. Удалить на самом деле — тот же вызов с --apply\n'
+[ "$cache_status" = "0" ] || exit "$cache_status"
