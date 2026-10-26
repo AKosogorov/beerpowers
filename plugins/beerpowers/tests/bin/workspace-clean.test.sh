@@ -40,7 +40,7 @@ pid=$(cat "$tmp/pid")
 printf '{"pid":%s,"tool":"mutants","since":"2026-10-26T00:00:00Z"}' "$pid" > "$tmp/slots/slot-2"
 
 runs="$cache/parallel-tests/runs"
-mkdir -p "$runs/20200101-000000-999999" "$runs/20200101-000000-$pid" "$runs/20991231-000000-1" "$runs/stray"
+mkdir -p "$runs/20200101-000000-999999" "$runs/20200101-000000-$pid" "$runs/20991231-000000-999998" "$runs/stray"
 printf 'log\n' > "$runs/20200101-000000-999999/w1.log"
 printf 'log\n' > "$runs/20200101-000000-$pid/w1.log"
 printf '<testsuites/>\n' > "$cache/parallel-tests/demo.junit.xml"
@@ -59,7 +59,7 @@ ko() { total=$((total + 1)); failed=$((failed + 1)); echo "FAIL  $1"; [ -n "$2" 
 has() { printf '%s\n' "$1" | grep -qF -- "$2"; }
 all_there() {
   [ -d "$cache/mutants/calc-s1" ] && [ -d "$cache/mutants/calc-s2" ] && [ -d "$runs/20200101-000000-999999" ] \
-    && [ -d "$runs/20200101-000000-$pid" ] && [ -d "$runs/20991231-000000-1" ] && [ -d "$cache/screenshots-reminder/old-session" ]
+    && [ -d "$runs/20200101-000000-$pid" ] && [ -d "$runs/20991231-000000-999998" ] && [ -d "$cache/screenshots-reminder/old-session" ]
 }
 
 # 1. Сухой прогон: каждая позиция с причиной, ничего не удалено.
@@ -91,7 +91,7 @@ if [ $? != 0 ] && has "$out" 'ждётся целое число дней'; then
 out=$(wc_ cache --apply)
 code=$?
 if [ "$code" = 0 ] && [ ! -e "$cache/mutants/calc-s1" ] && [ -d "$cache/mutants/calc-s2" ] \
-  && [ ! -e "$runs/20200101-000000-999999" ] && [ -d "$runs/20200101-000000-$pid" ] && [ -d "$runs/20991231-000000-1" ] && [ -d "$runs/stray" ] \
+  && [ ! -e "$runs/20200101-000000-999999" ] && [ -d "$runs/20200101-000000-$pid" ] && [ -d "$runs/20991231-000000-999998" ] && [ -d "$runs/stray" ] \
   && [ ! -e "$cache/screenshots-reminder/old-session" ] && [ -d "$cache/screenshots-reminder/new-session" ] \
   && [ -f "$cache/parallel-tests/demo.junit.xml" ] && [ -f "$cache/comment-guard" ] && [ -f "$cache/notes.txt" ] \
   && has "$out" 'итог: копий мутантов убрано 1 (заняты прогоном: 1), прогонов тестов убрано 1'; then
@@ -110,14 +110,14 @@ kill "$sleeper" 2>/dev/null
 wait "$sleeper" 2>/dev/null
 sleeper=""
 out=$(wc_ cache --apply)
-if [ ! -e "$cache/mutants/calc-s2" ] && [ ! -e "$runs/20200101-000000-$pid" ] && [ -d "$runs/20991231-000000-1" ] \
+if [ ! -e "$cache/mutants/calc-s2" ] && [ ! -e "$runs/20200101-000000-$pid" ] && [ -d "$runs/20991231-000000-999998" ] \
   && [ -z "$(git -C "$base" worktree list --porcelain | grep 'mutants')" ]; then
   ok "после прогона — копия и прогон убраны"
 else ko "после прогона — копия и прогон убраны" "$out"; fi
 
 # 6. --keep-days 0 — уходит и свежий прогон.
 out=$(wc_ cache --keep-days 0 --apply)
-if [ ! -e "$runs/20991231-000000-1" ] && [ ! -e "$cache/screenshots-reminder/new-session" ] && [ -d "$runs/stray" ]; then
+if [ ! -e "$runs/20991231-000000-999998" ] && [ ! -e "$cache/screenshots-reminder/new-session" ] && [ -d "$runs/stray" ]; then
   ok "--keep-days 0 — свежие тоже убраны, чужое имя на месте"
 else ko "--keep-days 0 — свежие тоже убраны, чужое имя на месте" "$out"; fi
 
