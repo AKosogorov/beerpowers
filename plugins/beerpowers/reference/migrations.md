@@ -491,3 +491,17 @@ Chrome вынесен из `cdp-screenshot.mjs`), новая `.claude/bin/cdp-sc
 
 Копии: новая `.claude/reference/hooks.md` — абзац об исключении копий. Настройки не менялись,
 проектного нет.
+
+## → 2.12.0
+
+Уборка кеша `.claude/.cache/`: копии деревьев мутантов, логи прогонов `parallel-tests` и
+состояние напоминания о скриншотах копились без предела. Engine-блоки не меняются.
+
+Копии: новые `.claude/bin/workspace-clean` (форма `cache` с `--keep-days`, две новые формы
+пути в белом списке удаления), `.claude/bin/mutants.mjs` (`--clean --dry-run`),
+`.claude/bin/parallel-tests.mjs` (строка справки о `workspace-clean cache`),
+`.claude/reference/worktrees.md` (форма `cache` в списке уборки). Настройки не менялись:
+`Bash(.claude/bin/workspace-clean:*)` в `allow` уже покрывает новую форму.
+
+Проектного нет. Накопленное до обновления убирает первый же `/beerpowers:worktrees-clear`
+или сухой прогон `.claude/bin/workspace-clean cache` и тот же вызов с `--apply`.
