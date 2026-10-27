@@ -1,7 +1,8 @@
 // Заглушка API Трекера для yandex-tracker-write.test.sh: держит задачи, связи и вложения
 // в памяти, пишет каждый запрос строкой в журнал и ведёт себя как живой Трекер там, где это
 // проверяется: связь «связана» на каждый ключ из описания, одна связь на пару задач, версия
-// задачи растёт с каждым вложением, правка со старой версией получает 409.
+// задачи растёт с каждым вложением, правка со старой версией получает 409. Комментарий
+// с текстом «чужой» записывается от другого автора — так проверяется отказ по чужому.
 //
 // Запуск: node tracker-api-stub.mjs <файл порта> <журнал>
 
@@ -37,7 +38,7 @@ http.createServer((req, res) => {
     let m;
     const known = /^\/issues\/([^/]+)\/(attachments|comments|transitions)/.exec(p);
     if (known && !issues.has(known[1])) return send(res, 404, { errorMessages: ['нет задачи'] });
-    if (p === '/myself') return send(res, 200, { login: 'stub' });
+    if (p === '/myself') return send(res, 200, { uid: 11, login: 'stub', display: 'Заглушка' });
     if (req.method === 'POST' && p === '/attachments') return send(res, 201, { id: nextId('att'), name: 'f' });
     if (req.method === 'POST' && p === '/issues') {
       const key = `${body.queue}-${issues.size + 1}`;
@@ -72,9 +73,18 @@ http.createServer((req, res) => {
     if ((m = /^\/issues\/([^/]+)\/comments$/.exec(p))) {
       const it = issues.get(m[1]);
       if (req.method === 'GET') return send(res, 200, it.comments);
-      const c = { id: nextId('comment'), text: body.text };
+      const createdBy = /чужой/.test(body.text) ? { id: '22', display: 'Другой' } : { id: '11', display: 'Заглушка' };
+      const c = { id: Number(nextId('comment')), text: body.text, createdBy };
       it.comments.push(c);
       return send(res, 201, c);
+    }
+    if ((m = /^\/issues\/([^/]+)\/comments\/([^/]+)$/.exec(p))) {
+      const it = issues.get(m[1]);
+      const c = it.comments.find((x) => String(x.id) === m[2]);
+      if (!c) return send(res, 404, { errorMessages: ['нет комментария'] });
+      if (req.method === 'GET') return send(res, 200, c);
+      if (req.method === 'PATCH') { c.text = body.text; return send(res, 200, c); }
+      if (req.method === 'DELETE') { it.comments = it.comments.filter((x) => x !== c); return send(res, 204); }
     }
     if ((m = /^\/issues\/([^/]+)\/links$/.exec(p))) {
       const key = m[1];

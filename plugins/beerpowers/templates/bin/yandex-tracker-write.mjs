@@ -10,6 +10,11 @@
 //   node .claude/bin/yandex-tracker-write.mjs create <черновик.md>       — завести задачу
 //   node .claude/bin/yandex-tracker-write.mjs edit <КОД> <черновик.md>   — заменить название, описание, поля
 //   node .claude/bin/yandex-tracker-write.mjs comment <КОД> <файл.md>    — комментарий
+//   node .claude/bin/yandex-tracker-write.mjs comments <КОД> [<id>]      — комментарии: id, автор,
+//        первая строка; с id — автор и полный текст одного
+//   node .claude/bin/yandex-tracker-write.mjs edit-comment <КОД> <id> <файл.md> — заменить текст
+//        своего комментария
+//   node .claude/bin/yandex-tracker-write.mjs delete-comment <КОД> <id>  — удалить свой комментарий
 //   node .claude/bin/yandex-tracker-write.mjs links <КОД>                — связи задачи
 //   node .claude/bin/yandex-tracker-write.mjs link <КОД> <вид> <КОД2> [--replace]
 //   node .claude/bin/yandex-tracker-write.mjs unlink <КОД> <КОД2>
@@ -30,9 +35,18 @@
 // - картинка «![подпись](путь)» и файл «[имя](путь)» локальным путём от каталога черновика —
 //   файл загружается, ссылка становится вложением Трекера (у файла — :file[…]{type=…});
 //   вложение оказывается и в списке вложений задачи;
-// - подпись — последняя строка «© Клод Клодыч Опусович» — становится оранжевым курсивом.
+// - подпись — последняя строка «© Клод Клодыч <отчество по модели сессии>» — становится
+//   оранжевым курсивом.
 // Разметка Трекера, уже стоящая в тексте (описание, взятое из задачи для правки), проходит
 // как есть.
+//
+// Подпись сессии ставит сам скрипт: отчество — по модели, которая ведёт сессию (Opus —
+// Опусович, Sonnet — Сонетович, Haiku — Хайкувич, Fable — Фейблович). Модель он берёт из
+// транскрипта сессии: Claude Code передаёт команде CLAUDE_CODE_SESSION_ID, транскрипт лежит
+// в projects/<каталог проекта>/<id>.jsonl каталога настроек Claude, у последнего ответа
+// модели — её имя. Нет подписи в тексте — скрипт её дописывает; есть, но не по модели
+// сессии, — отказ. Модель узнать не удалось (скрипт запущен не из Claude Code) — подпись
+// пишет сессия, а скрипт сверяет только её форму.
 //
 // Почему так, а не прямыми вызовами API:
 // - У пары задач Трекер держит одну связь: новая связь на ту же пару молча заменяет прежнюю.
@@ -44,6 +58,9 @@
 // - Удалённое вложение оставляет в тексте мёртвую ссылку. Поэтому detach отказывает, пока
 //   вложение упомянуто в описании.
 // - Последняя строка описания и комментария — подпись сессии; без неё запись не уходит.
+// - Права на правку и удаление комментария Трекер даёт по роли в очереди, а не по авторству:
+//   токен администратора очереди пропустит и чужой комментарий. Поэтому edit-comment
+//   и delete-comment сначала сверяют автора комментария с владельцем токена и чужой не трогают.
 //
 // Доступы — как у yandex-tracker: переменные окружения YANDEX_TRACKER_TOKEN,
 // YANDEX_TRACKER_ORG_ID, YANDEX_TRACKER_ORG_TYPE, затем .claude/yandex-tracker-settings.json,
@@ -100,10 +117,44 @@ const SECTIONS = {
 const TYPES = { 'Задача': 'task', 'Ошибка': 'bug' };
 const FIELDS = ['Очередь', 'Тип', 'Доска', 'Теги', 'Исполнитель', 'QA', 'Ревьюер', 'Связи'];
 const HEADER_LABELS = ['Зависит от:', 'Блокирует:', '⚠️ При выкладке:'];
+// Отчество подписи — по семейству модели сессии.
+const PATRONYMIC = { opus: 'Опусович', sonnet: 'Сонетович', haiku: 'Хайкувич', fable: 'Фейблович' };
 // Подпись в черновике — простой строкой; оранжевый курсив — уже отправленная, в тексте из задачи.
-const SIGN_TEXT = '© Клод Клодыч (?:Опусович|Сонетович|Хайкувич|Фейблович)';
+const SIGN_TEXT = `© Клод Клодыч (?:${Object.values(PATRONYMIC).join('|')})`;
 const SIGNATURE = new RegExp(`^(?:${SIGN_TEXT}|\\{orange\\}\\(\\*${SIGN_TEXT}\\*\\))$`);
 const SIGN_PLAIN = new RegExp(`^${SIGN_TEXT}$`);
+// Последняя строка, которая пытается быть подписью: простая или оранжевая, начинается с «©».
+const SIGN_LIKE = /^(?:\{orange\}\(\*)?©/;
+const SIGN_ANY = `© Клод Клодыч <${Object.values(PATRONYMIC).join('|')} — по модели сессии>`;
+
+const configDir = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
+
+// Семейство модели сессии по её транскрипту: последний ответ модели называет её имя.
+// Не узнать — null, и подпись остаётся на сессии.
+function sessionModel() {
+  const id = process.env.CLAUDE_CODE_SESSION_ID || '';
+  if (!/^[\w-]+$/.test(id)) return null;
+  const root = path.join(configDir, 'projects');
+  let dirs;
+  try { dirs = fs.readdirSync(root); } catch { return null; }
+  for (const dir of dirs) {
+    const file = path.join(root, dir, `${id}.jsonl`);
+    if (!fs.existsSync(file)) continue;
+    const lines = fs.readFileSync(file, 'utf8').split('\n');
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (!lines[i].includes('"assistant"')) continue;
+      let model;
+      try { model = JSON.parse(lines[i]).message?.model; } catch { continue; }
+      // Служебные записи без модели («<synthetic>») пропускаются.
+      const family = Object.keys(PATRONYMIC).find((f) => String(model || '').includes(f));
+      if (family) return family;
+    }
+  }
+  return null;
+}
+
+const SESSION = sessionModel();
+const OWN_SIGN = SESSION ? `© Клод Клодыч ${PATRONYMIC[SESSION]}` : null;
 // Ключ задачи, но не имя файла по ключу: SHOP-44-tech.md связи не требует.
 const KEY = /\b[A-Z][A-Z0-9]+-\d+\b(?!-[a-zа-яё])/g;
 
@@ -160,7 +211,7 @@ function skeleton(type) {
     required ? '<обязательно>' : '<необязательно: нечего писать — секцию убрать>',
     '',
   ]);
-  return [...head, ...body, '© Клод Клодыч <Опусович|Сонетович|Хайкувич|Фейблович>', ''].join('\n');
+  return [...head, ...body, OWN_SIGN || SIGN_ANY, ''].join('\n');
 }
 
 // ---------- черновик ----------
@@ -259,19 +310,32 @@ function renderSignature(text) {
   return lines.join('\n');
 }
 
-function checkSignature(text, errors) {
-  const last = text.trim().split('\n').pop()?.trim() || '';
-  if (!SIGNATURE.test(last)) errors.push('последняя строка — подпись «© Клод Клодыч Опусович» (Сонетович, Хайкувич, Фейблович — по модели сессии)');
+// Подпись последней строкой: нет — дописывается подпись модели сессии, есть — сверяется с ней.
+// Возвращает текст с подписью.
+function signText(text, errors) {
+  const trimmed = text.trim();
+  const last = trimmed.split('\n').pop().trim();
+  if (SIGN_LIKE.test(last)) {
+    if (!SIGNATURE.test(last)) errors.push(`последняя строка «${last}» — не подпись: подпись — «${OWN_SIGN || SIGN_ANY}»`);
+    else if (OWN_SIGN && !last.includes(OWN_SIGN)) errors.push(`подпись «${last}» не по модели сессии (${SESSION}): последней строкой — «${OWN_SIGN}» или ничего, скрипт допишет сам`);
+    return trimmed;
+  }
+  if (!OWN_SIGN) {
+    errors.push(`последняя строка — подпись «${SIGN_ANY}»: модель сессии скрипту не узнать, подпись пишет сессия`);
+    return trimmed;
+  }
+  return `${trimmed}\n\n${OWN_SIGN}`;
 }
 
 function checkText(text, dir, errors, warnings) {
-  checkSignature(text, errors);
+  text = signText(text, errors);
   for (const m of text.matchAll(/<[а-яё][^<>\n]*>/gi)) errors.push(`незаполненное место шаблона: ${m[0]}`);
   for (const r of localRefs(text)) if (!fs.existsSync(path.resolve(dir, r.target))) errors.push(`нет файла для ${r.all}`);
   if (/\.(php|tsx?|jsx?|vue|py|go|java|rb|cs|kt|swift)(:\d+)\b/.test(text)) warnings.push('путь к коду с номером строки — номера устаревают, место в коде — во вложении <КОД>-tech.md по имени модуля или функции');
   if (/(^|[\s(])![0-9]+\b/.test(text)) warnings.push('номер MR в тексте — описание для людей, MR видно в Трекере');
   if (/\b(?=[0-9a-f]*[a-f])(?=[0-9a-f]*[0-9])[0-9a-f]{7,40}\b/.test(text)) warnings.push('похоже на SHA коммита — описание для людей, SHA не нужен');
   if (/₽|\bруб\.|ставк[аи]\s+\d/i.test(text)) errors.push('деньги в тексте: оценок, бюджета и ставок в задаче нет — оценка комментарием');
+  return text;
 }
 
 function checkDraft(d) {
@@ -324,8 +388,8 @@ function checkDraft(d) {
   const mentioned = new Set([...(d.description.match(KEY) || [])]);
   for (const key of mentioned) if (!links.some((l) => l.key === key)) warnings.push(`${key} упомянута в тексте, связи с ней нет`);
 
-  checkText(d.description, d.dir, errors, warnings);
-  return { errors, warnings, type, links };
+  const description = checkText(d.description, d.dir, errors, warnings);
+  return { errors, warnings, type, links, description };
 }
 
 function report({ errors, warnings }) {
@@ -340,7 +404,7 @@ function setting(file, key) {
 }
 
 const projectSettings = path.join(path.dirname(path.dirname(self)), 'yandex-tracker-settings.json');
-const globalSettings = path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'yandex-tracker-settings.json');
+const globalSettings = path.join(configDir, 'yandex-tracker-settings.json');
 const cred = { token: process.env.YANDEX_TRACKER_TOKEN || '', orgId: process.env.YANDEX_TRACKER_ORG_ID || '', orgType: process.env.YANDEX_TRACKER_ORG_TYPE || '' };
 for (const file of [projectSettings, globalSettings]) {
   cred.token ||= setting(file, 'token');
@@ -452,6 +516,42 @@ async function addLink(key, kind, other, replace) {
   return true;
 }
 
+// Владелец токена: Трекер называет пользователя разными id, и автор комментария может прийти
+// любым из них.
+let owner = null;
+async function myself() {
+  if (!owner) {
+    const u = await api('GET', '/myself');
+    const ids = ['uid', 'trackerUid', 'passportUid', 'cloudUid', 'login'].map((k) => u[k]).filter(Boolean).map(String);
+    owner = { ids: new Set(ids), display: u.display || u.login };
+  }
+  return owner;
+}
+
+const authorOf = (c) => c.createdBy?.display || c.createdBy?.id || '—';
+const isMine = (c, who) => who.ids.has(String(c.createdBy?.id ?? ''));
+
+// Комментарии страницами: следующая страница — от id последнего комментария предыдущей.
+async function commentsOf(key) {
+  const out = [];
+  let after = '';
+  for (;;) {
+    const page = (await api('GET', `/issues/${key}/comments?perPage=50${after ? `&id=${after}` : ''}`)) || [];
+    const fresh = page.filter((c) => !out.some((o) => o.id === c.id));
+    out.push(...fresh);
+    if (page.length < 50 || !fresh.length) return out;
+    after = page[page.length - 1].id;
+  }
+}
+
+// Комментарий задачи, только свой: чужой правкой и удалением не трогается.
+async function ownComment(key, id) {
+  const c = await api('GET', `/issues/${key}/comments/${id}`);
+  const who = await myself();
+  if (!isMine(c, who)) die(`комментарий ${id} в ${key} написал ${authorOf(c)}, а токен — ${who.display}: чужой комментарий скрипт не правит и не удаляет`);
+  return c;
+}
+
 function readText(file) {
   if (!fs.existsSync(file)) die(`нет файла: ${file}`);
   return fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n').trim();
@@ -485,9 +585,9 @@ switch (cmd) {
     const res = checkDraft(d);
     report(res);
     if (res.errors.length) die('черновик не сходится с шаблоном — ничего не отправлено');
-    const { text, ids } = await upload(d.description, d.dir, null);
+    const { text, ids } = await upload(res.description, d.dir, null);
     // unique — защита от дубля: повторный create того же черновика Трекер отклонит 409.
-    const unique = crypto.createHash('sha1').update([d.fields['Очередь'], d.summary, d.description].join('\n')).digest('hex');
+    const unique = crypto.createHash('sha1').update([d.fields['Очередь'], d.summary, res.description].join('\n')).digest('hex');
     const issue = await api('POST', '/issues', { queue: d.fields['Очередь'], type: res.type, markupType: 'md', description: text, unique, ...fieldsBody(d), ...(ids.length ? { attachmentIds: ids } : {}) });
     // Черновик — полное состояние задачи: его вид связи заменяет «связана», которую Трекер
     // сам ставит каждому ключу из описания.
@@ -502,7 +602,7 @@ switch (cmd) {
     const res = checkDraft(d);
     report(res);
     if (res.errors.length) die('черновик не сходится с шаблоном — ничего не отправлено');
-    const { text } = await upload(d.description, d.dir, key);
+    const { text } = await upload(res.description, d.dir, key);
     const fresh = await api('GET', `/issues/${key}`);
     const body = { ...fieldsBody(d), description: text, markupType: 'md' };
     // Тег пишется заменой, а не добавлением: черновик — полное состояние задачи.
@@ -516,13 +616,54 @@ switch (cmd) {
     const [key, file] = args;
     const errors = [];
     const warnings = [];
-    const body = readText(file);
-    checkText(body, path.dirname(path.resolve(file)), errors, warnings);
+    const dir = path.dirname(path.resolve(file));
+    const body = checkText(readText(file), dir, errors, warnings);
     report({ errors, warnings });
     if (errors.length) die('комментарий не отправлен');
-    const { text, ids } = await upload(body, path.dirname(path.resolve(file)), null);
+    const { text, ids } = await upload(body, dir, null);
     const c = await api('POST', `/issues/${key}/comments`, { text, markupType: 'md', ...(ids.length ? { attachmentIds: ids } : {}) });
     process.stdout.write(`комментарий ${c.id}: ${WEB}/${key}\n`);
+    break;
+  }
+  case 'comments': {
+    need(1, 'comments <КОД> [<id комментария>]');
+    const [key, id] = args;
+    if (id) {
+      const c = await api('GET', `/issues/${key}/comments/${id}`);
+      process.stdout.write(`комментарий ${c.id}, автор ${authorOf(c)}, ${c.createdAt || ''}\n\n${c.text || ''}\n`);
+      break;
+    }
+    const who = await myself();
+    for (const c of await commentsOf(key)) {
+      const first = (c.text || '').trim().split('\n')[0].slice(0, 80);
+      process.stdout.write(`${c.id}  ${authorOf(c)}${isMine(c, who) ? ' (свой)' : ''}  ${first}\n`);
+    }
+    break;
+  }
+  case 'edit-comment': {
+    need(3, 'edit-comment <КОД> <id комментария> <файл.md>');
+    const [key, id, file] = args;
+    const errors = [];
+    const warnings = [];
+    const dir = path.dirname(path.resolve(file));
+    const body = checkText(readText(file), dir, errors, warnings);
+    report({ errors, warnings });
+    if (errors.length) die('комментарий не изменён');
+    await ownComment(key, id);
+    // Файл кладётся прямо в задачу: временную загрузку привязывает только создание комментария.
+    const { text } = await upload(body, dir, key);
+    await api('PATCH', `/issues/${key}/comments/${id}`, { text, markupType: 'md' });
+    process.stdout.write(`комментарий ${id} изменён: ${WEB}/${key}\n`);
+    break;
+  }
+  case 'delete-comment': {
+    need(2, 'delete-comment <КОД> <id комментария>');
+    const [key, id] = args;
+    const c = await ownComment(key, id);
+    await api('DELETE', `/issues/${key}/comments/${id}`);
+    process.stdout.write(`комментарий ${id} удалён из ${key}\n`);
+    const att = [...new Set([...(c.text || '').matchAll(/\/attachments\/(\d+)/g)].map((m) => m[1]))];
+    if (att.length) process.stderr.write(`вложения из него остались в задаче: ${att.join(', ')} — убрать: detach\n`);
     break;
   }
   case 'links': {
@@ -570,8 +711,7 @@ switch (cmd) {
     if (resolution) body.resolution = resolution;
     if (commentFile) {
       const errors = [];
-      const text = readText(commentFile);
-      checkSignature(text, errors);
+      const text = signText(readText(commentFile), errors);
       report({ errors, warnings: [] });
       if (errors.length) die('переход не выполнен');
       body.comment = renderSignature(text);
