@@ -28,7 +28,8 @@ failed=0
 
 # t <имя> <код> <ожидание>… -- <аргументы скрипта>: ожидание «текст» — есть в выводе,
 # «!текст» — нет в нём, «log:текст» — есть в журнале запросов, «nolog:текст» — нет в нём.
-# Журнал чистится перед каждым случаем.
+# Журнал чистится перед каждым случаем. Переменная sid — id сессии Claude Code для случая:
+# пустая — модель сессии скрипту не узнать.
 t() {
   name=$1
   want_code=$2
@@ -39,9 +40,9 @@ $1"; shift; done
   shift
   total=$((total + 1))
   : > "$tmp/log"
-  out=$(env -u YANDEX_TRACKER_ORG_TYPE YANDEX_TRACKER_TOKEN=t YANDEX_TRACKER_ORG_ID=1 \
+  out=$(env -u YANDEX_TRACKER_ORG_TYPE -u CLAUDE_CODE_SESSION_ID YANDEX_TRACKER_TOKEN=t YANDEX_TRACKER_ORG_ID=1 \
     YANDEX_TRACKER_API_HOST="http://127.0.0.1:$port" CLAUDE_CONFIG_DIR="$tmp/home/.claude" \
-    node "$w" "$@" 2>&1)
+    ${sid:+"CLAUDE_CODE_SESSION_ID=$sid"} node "$w" "$@" 2>&1)
   code=$?
   ok=1
   why=""
@@ -66,6 +67,11 @@ $1"; shift; done
 }
 
 sign='© Клод Клодыч Опусович'
+sid=''
+# Транскрипт сессии на Sonnet: служебная запись без модели последней, ответ модели — перед ней.
+mkdir -p "$tmp/home/.claude/projects/ws"
+printf '%s\n' '{"type":"assistant","message":{"model":"claude-sonnet-5-5"}}' \
+  '{"type":"assistant","message":{"model":"<synthetic>"}}' > "$tmp/home/.claude/projects/ws/s-sonnet.jsonl"
 
 # draft <файл> <название> <теги> <связи> <тело>: черновик задачи в $tmp/d.
 draft() {
@@ -273,6 +279,29 @@ t "comment: без подписи не уходит" 1 "подпись" "nolog:P
 printf 'Чеклист — [qa.html](qa.html)\n\n%s\n' "$sign" > "$tmp/d/c2.md"
 printf '<html></html>\n' > "$tmp/d/qa.html"
 t "comment: файл временной загрузкой" 0 "комментарий" "log:POST /attachments" 'log:{type=\"text/html\"}' -- comment QQ-1 "$tmp/d/c2.md"
+
+printf 'Сделано.\n\n%s\n' "$sign" > "$tmp/d/c3.md"
+t "comment: без сессии подпись сверяется только по форме" 0 "комментарий" -- comment QQ-1 "$tmp/d/c3.md"
+printf 'Сделано.\n\n© Клод Клодыч Сонетыч\n' > "$tmp/d/c4.md"
+t "comment: строка с © не по форме подписи — отказ" 1 "не подпись" "nolog:POST /issues/QQ-1/comments" -- comment QQ-1 "$tmp/d/c4.md"
+
+sid=s-sonnet
+t "template: подпись по модели сессии" 0 "© Клод Клодыч Сонетович" "!<Опусович" -- template task
+t "check: подпись не по модели сессии — отказ" 1 "не по модели сессии (sonnet)" -- check "$tmp/d/ok.md"
+t "comment: подпись не по модели сессии не уходит" 1 "не по модели сессии" "nolog:POST /issues/QQ-1/comments" -- comment QQ-1 "$tmp/d/c3.md"
+t "comment: подпись дописана по модели сессии" 0 "комментарий 3" 'log:Готово.\n\n{orange}(*© Клод Клодыч Сонетович*)' -- comment QQ-1 "$tmp/d/c1.md"
+printf 'Готово, чуть иначе.\n\n© Клод Клодыч Сонетович\n' > "$tmp/d/c5.md"
+t "edit-comment: свой комментарий изменён" 0 "комментарий 3 изменён" 'log:PATCH /issues/QQ-1/comments/3 {"text":"Готово, чуть иначе.\n\n{orange}(*© Клод Клодыч Сонетович*)"' -- edit-comment QQ-1 3 "$tmp/d/c5.md"
+t "edit-comment: подпись не по модели — отказ до запроса" 1 "не изменён" "nolog:GET /issues/QQ-1/comments/3" -- edit-comment QQ-1 3 "$tmp/d/c3.md"
+printf 'чужой отзыв\n' > "$tmp/d/c6.md"
+t "comment: от другого автора (заглушка)" 0 "комментарий 4" -- comment QQ-1 "$tmp/d/c6.md"
+t "comments: список с авторами и своими" 0 "3  Заглушка (свой)  Готово, чуть иначе." "4  Другой  чужой отзыв" -- comments QQ-1
+t "comments: один комментарий целиком" 0 "автор Заглушка" "Сонетович" -- comments QQ-1 3
+t "edit-comment: чужой — отказ" 1 "чужой комментарий" "nolog:PATCH" -- edit-comment QQ-1 4 "$tmp/d/c5.md"
+t "delete-comment: чужой — отказ" 1 "чужой комментарий" "nolog:DELETE" -- delete-comment QQ-1 4
+t "delete-comment: свой удалён" 0 "комментарий 3 удалён" "log:DELETE /issues/QQ-1/comments/3" -- delete-comment QQ-1 3
+t "delete-comment: нет комментария — ответ Трекера" 1 "404" -- delete-comment QQ-1 3
+sid=''
 
 t "move: поле перехода не задано — ответ Трекера" 1 "Резолюция" -- move QQ-1 close
 t "move: с резолюцией" 0 "Закрыт" 'log:{"resolution":"fixed"}' -- move QQ-1 close --resolution fixed
