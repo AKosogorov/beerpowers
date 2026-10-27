@@ -17,6 +17,7 @@
 | `guard-kill` | PreToolUse `Bash` | есть | включён | — |
 | `guard-comments` | PreToolUse `Bash` | есть | включён | `comments.excludeDirs` |
 | `guard-commit-split` | PreToolUse `Bash` | есть | включён | — |
+| `guard-approval-link` | PreToolUse `AskUserQuestion` | есть | включён | — |
 | `guard-agent-memory` | PreToolUse `Edit\|Write` | нет — не выключается | включён | — |
 | `guard-user-files` | `UserPromptSubmit`, PreToolUse `Skill`, `Write`, `Bash` | нет — действует только пока идёт setup или onboard | включён | — |
 | `quality-reminder` | PostToolUse `Edit\|Write` | нет — копия в проекте по выбору setup | — | `.claude/quality-gates.txt` |
@@ -143,6 +144,20 @@ Vue, Svelte, PHP, CSS/SCSS/LESS, Go, Java, Kotlin, Swift, Rust, C/C++, C#, Scala
 коммиты выпадут чисто, а смешанные останутся выпотрошенными. В репозиториях кода каталога
 `memory/tasks` нет — проверка молча проходит. Форма `git commit -- <пути>` не разбирается: набор
 файлов тогда не из индекса, а ложный отказ дороже пропуска.
+
+## `guard-approval-link` — ссылка на артефакт при утверждении
+
+На `AskUserQuestion` смотрит текст вопросов, заголовков и вариантов. Есть слова утверждения —
+«утвержд», «бриф», «черновик», «план», `approve`, `brief`, `ADR`, — а пути к файлу нет: ни
+`memory/tasks/…`, ни `memory/adr/…`, ни файла `.md` (прямые и обратные слэши одинаково) —
+отказ с требованием дать ссылку на артефакт и карточку `SendUserFile` до вопроса. Правило,
+которое барьер держит, — `team-lead.md`, «Развилки с пользователем», «Утверждение артефакта».
+
+Хук не видит текста ответа над вопросом — только сам вопрос, поэтому путь требуется в нём.
+Слова ловят и вопросы не об утверждении («какой план тарифа выбрать»), поэтому отказ —
+**один раз**: повтор того же вызова проходит. Отклонённый вопрос запоминается контрольной
+суммой в `.claude/.cache/approval-link-guard`. Включается флагом
+`barriers.guard-approval-link` в `.claude/workspace.json`; нет флага — включён.
 
 ## `guard-agent-memory` — память роли
 

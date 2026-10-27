@@ -10,7 +10,8 @@
     "guard-push": true,
     "guard-kill": true,
     "guard-comments": true,
-    "guard-commit-split": true
+    "guard-commit-split": true,
+    "guard-approval-link": true
   },
   "comments": {
     "excludeDirs": ["projects/shop-frontend/app/api"]

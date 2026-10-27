@@ -87,6 +87,7 @@ WS_ALL_OFF='{
     "guard-kill": false,
     "guard-comments": false,
     "guard-commit-split": false,
+    "guard-approval-link": false,
     "guard-agent-memory": false
   }
 }'
