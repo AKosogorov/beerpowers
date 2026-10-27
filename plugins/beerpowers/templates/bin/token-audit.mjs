@@ -9,6 +9,17 @@
 //     .claude/bin/token-audit.mjs --json out.json          # плюс полный отчёт файлом
 //     .claude/bin/token-audit.mjs --dir <путь> --top 20    # другой проект, больше строк в топах
 //     .claude/bin/token-audit.mjs --all-projects --since <ISO-время начала окна>
+//     .claude/bin/token-audit.mjs --since 2026-10-15 --until 2026-10-21 --time --by-repo
+//
+// `--since` и `--until` — начало и конец периода, конец не включается. Время без зоны —
+// местное время машины, с `Z` или смещением — как записано; метки в логах — UTC, сравнение
+// идёт по моменту времени, а не по строке. Шапка вывода печатает границы в UTC.
+//
+// `--time` — время заходов: стена, время модели, инструментов (объединение интервалов)
+// и простоя, категории команд Bash, самые долгие заходы.
+// `--by-repo` — расход по репозиториям: репозиторий берётся из путей `projects/<репо>`
+// и `worktrees/<КОД>/<репо>` во входах вызовов, деньги захода делятся пропорционально
+// числу вызовов с путём в каждый репозиторий; заход без таких путей — «без репозитория».
 //
 // PowerShell — только через `node`: шебанг Windows не исполняет, прямой вызов молча
 // завершается без вывода.
@@ -60,6 +71,16 @@
 // их убирает только блокирующее ожидание. Каждый повтор заново читает весь контекст
 // захода, поэтому раздел показывает и billed этих запросов.
 //
+// Перезапись кеша — запрос захода, кроме первого, у которого запись в кеш больше половины
+// контекста (контекст от 30 тыс. токенов: меньшие не стоят разбора). Прямого флага промаха
+// в логе нет, это признак. Пауза — больше 5 минут с прошлого запроса того же захода: столько
+// живёт кеш на 5 минут. Паузу делят по тому, что было перед запросом: долгий вызов
+// инструмента (дольше 5 минут) или сообщение после простоя.
+//
+// Картинка в результате вызова (Read PNG, скриншот) в логе — base64 на сотни килобайт,
+// а в контекст ложится 1–2 тыс. токенов. Поэтому картинки не идут в рейтинг крупных
+// результатов по размеру, а меряются приростом записи в кеш на следующем запросе захода.
+//
 // Стоимость — эквивалент по прайсу API, а не сумма счёта по подписке. Нужна как единая
 // линейка для сравнения рычагов между собой. При расхождении прайса правится таблица PRICE,
 // а не выводы.
@@ -107,7 +128,64 @@ const allProjects = argv.includes('--all-projects');
 const dir = flag('--dir') ?? (allProjects ? projectsRoot : join(projectsRoot, resolve(process.cwd()).replace(/[:\\/]/g, '-')));
 const outJson = flag('--json');
 const SINCE = flag('--since');
+const UNTIL = flag('--until');
 const TOP = Number(flag('--top', '12'));
+const TIME = argv.includes('--time');
+const BY_REPO = argv.includes('--by-repo');
+
+// Время без зоны Date.parse читает как местное, с `Z` — как UTC, а одну дату — как UTC:
+// дата дополняется полуночью, чтобы и она была местной.
+const momentOf = (name, value) => {
+  if (value === null) return null;
+  const ms = Date.parse(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value);
+  if (Number.isNaN(ms)) { console.error(`${name}: не дата — ${value}`); process.exit(1); }
+  return ms;
+};
+const SINCE_MS = momentOf('--since', SINCE);
+const UNTIL_MS = momentOf('--until', UNTIL);
+const PERIOD = SINCE_MS !== null || UNTIL_MS !== null;
+
+const MIN5 = 5 * 60 * 1000;
+const MISS_MIN_CONTEXT = 30000;
+
+// Категория вызова для разреза по времени: по имени инструмента, у Bash — по тексту команды.
+function timeCategory(name, input) {
+  if (/^mcp__.*(browser|chrome)/i.test(name)) return 'браузер (MCP)';
+  if (name !== 'Bash') return ['Read', 'Grep', 'Glob', 'Edit', 'Write'].includes(name) ? 'файлы' : 'прочие инструменты';
+  const c = String(input?.command ?? '');
+  if (/\buntil\b|sleep \d{2,}/.test(c)) return 'ожидание фонового прогона';
+  if (/mutant|mutat/i.test(c)) return 'мутационные пробы';
+  if (/parallel-tests|phpunit|pest\b|vitest|jest|pytest|playwright test|go test|cargo test|(npm|yarn|pnpm)\b.*\btest\b/.test(c)) return 'тесты';
+  if (/phpstan|psalm|eslint|lint|tsc\b|typecheck|rector|pint\b|prettier|stylelint|php-cs-fixer/.test(c)) return 'гейты';
+  if (/\b(build|generate)\b/.test(c)) return 'сборка';
+  if (/\bdev\b|serve\b/.test(c)) return 'dev-сервер';
+  if (/cdp-|chrome|screenshot/.test(c)) return 'браузерные скрипты';
+  if (/artisan|docker|psql|mysql|testdb/.test(c)) return 'база и контейнеры';
+  if (/\bgit\b/.test(c)) return 'git';
+  return 'прочий Bash';
+}
+
+// Репозитории во входе вызова: projects/<репо> и worktrees/<КОД>/<репо>. Вход разбирается
+// в виде JSON, где обратный слэш пути удвоен, а `\n` перевода строки — одиночный: разделитель —
+// `/` или двойной обратный слэш, иначе «projects/\nfor» дал бы репозиторий «nfor».
+// Каталог логов ~/.claude/projects/<slug> и адрес API GitLab …/api/v4/projects/… репозиторием
+// не считаются. Запуск из корня
+// workspace — в счёт идут только каталоги, которые есть в его projects/.
+const SEP = String.raw`(?:/|\\\\)`;
+const REPO_PATH = new RegExp(String.raw`(?<!\.claude${SEP})(?<!/api/v\d+)(?:^|[/"'\s=]|\\\\)(?:projects|worktrees${SEP}[^/\\"'\s]+)${SEP}([A-Za-z0-9_][A-Za-z0-9._-]*)`, 'g');
+let knownRepos = null;
+try { knownRepos = new Set(readdirSync(join(process.cwd(), 'projects'))); } catch { /* запуск не из корня workspace */ }
+function reposOf(input) {
+  let s = '';
+  try { s = JSON.stringify(input ?? {}); } catch { return []; }
+  const names = [...s.matchAll(REPO_PATH)]
+    .map((m) => m[1].replace(/[.-]+$/, ''))
+    .filter((r) => r && !/^[A-Za-z]--/.test(r) && (!knownRepos || knownRepos.has(r)));
+  return [...new Set(names)];
+}
+
+const isImageResult = (ev, block) => ev.toolUseResult?.type === 'image'
+  || (Array.isArray(block?.content) && block.content.some((c) => c?.type === 'image'));
 
 if (!existsSync(dir)) {
   console.error(`Каталог логов не найден: ${dir}`);
@@ -213,6 +291,12 @@ const chainLengths = new Map();
 const chainsByRole = new Map();
 const pollsByRole = new Map();
 const perRequestBilled = [];
+const missByRole = new Map();
+const missByCause = new Map();
+const startContext = new Map();
+const images = [];
+const timeByRole = new Map();
+const byRepo = new Map();
 let lines = 0, badLines = 0, assistantRows = 0;
 let requestsWithTools = 0, callsTotal = 0, multiCallRequests = 0, singleReadRequests = 0, chainSavings = 0;
 
@@ -227,6 +311,14 @@ for (const t of targets) {
   // а ставки у них разные — общий usage в деньги не переводится.
   const usageByModel = new Map();
   let resultChars = 0, first = null, last = null;
+  // Время и кеш внутри захода: прошлый запрос, прошлое событие пользователя и чем оно было,
+  // начатые вызовы, картинки, которые ждут следующего запроса.
+  let firstMs = null, lastMs = null, prevRequestMs = null, lastUserMs = null, lastAssistantMs = null;
+  let lastUserKind = null, lastToolMs = 0, modelMs = 0;
+  const toolStart = new Map();
+  const toolIntervals = [];
+  let pendingImages = [];
+  const repoCalls = new Map();
 
   const rl = createInterface({ input: createReadStream(t.path, { encoding: 'utf8' }), crlfDelay: Infinity });
   for await (const line of rl) {
@@ -234,12 +326,32 @@ for (const t of targets) {
     lines += 1;
     let ev;
     try { ev = JSON.parse(line); } catch { badLines += 1; continue; }
-    if (SINCE && ev.timestamp && ev.timestamp < SINCE) continue;
-    if (ev.timestamp) {
+    const ms = ev.timestamp ? Date.parse(ev.timestamp) : NaN;
+    if (!Number.isNaN(ms)) {
+      if (SINCE_MS !== null && ms < SINCE_MS) continue;
+      if (UNTIL_MS !== null && ms >= UNTIL_MS) continue;
       if (!first || ev.timestamp < first) first = ev.timestamp;
       if (!last || ev.timestamp > last) last = ev.timestamp;
+      if (firstMs === null) { firstMs = ms; lastUserMs = ms; }
+      lastMs = ms;
     }
     const msg = ev.message;
+
+    if (ev.type === 'user' && !Number.isNaN(ms)) {
+      let isResult = false;
+      lastToolMs = 0;
+      for (const b of Array.isArray(msg?.content) ? msg.content : []) {
+        if (b?.type !== 'tool_result' || !toolStart.has(b.tool_use_id)) continue;
+        const s = toolStart.get(b.tool_use_id);
+        isResult = true;
+        if (ms >= s.ms) {
+          toolIntervals.push([s.ms, ms, s.category]);
+          lastToolMs = Math.max(lastToolMs, ms - s.ms);
+        }
+      }
+      lastUserKind = isResult ? 'result' : 'message';
+      lastUserMs = ms;
+    }
 
     if (ev.type === 'assistant' && msg?.usage) {
       assistantRows += 1;
@@ -247,6 +359,38 @@ for (const t of targets) {
       const model = msg.model || 'unknown';
       if (key && !seenRequests.has(key)) {
         seenRequests.add(key);
+        const u0 = msg.usage;
+        const write = u0.cache_creation_input_tokens || 0;
+        const context = (u0.input_tokens || 0) + (u0.cache_read_input_tokens || 0) + write;
+        if (prevRequestMs === null) {
+          if (!startContext.has(t.role)) startContext.set(t.role, []);
+          startContext.get(t.role).push(context);
+        } else if (write > 0.5 * context && context >= MISS_MIN_CONTEXT) {
+          const gap = Number.isNaN(ms) ? 0 : ms - prevRequestMs;
+          const cause = gap <= MIN5 ? 'без паузы'
+            : lastUserKind === 'result' && lastToolMs > MIN5 ? 'пауза: долгий вызов инструмента'
+              : lastUserKind === 'message' ? 'пауза: ожидание сообщения' : 'пауза: прочее';
+          const w = emptyUsage();
+          addUsage(w, { cache_creation: u0.cache_creation, cache_creation_input_tokens: write });
+          const wcost = costOf(w, model) ?? 0;
+          for (const [map, k] of [[missByRole, t.role], [missByCause, cause]]) {
+            const m = map.get(k) || { requests: 0, paused: 0, billed: 0, write: 0, cost: 0 };
+            m.requests += 1;
+            if (gap > MIN5) m.paused += 1;
+            m.billed += context;
+            m.write += write;
+            m.cost += wcost;
+            map.set(k, m);
+          }
+        }
+        // Картинка ложится в контекст следующего запроса: её вес — запись в кеш этого запроса,
+        // поровну между картинками одного хода.
+        for (const img of pendingImages) img.tokens = Math.round(write / pendingImages.length);
+        pendingImages = [];
+        if (!Number.isNaN(ms)) {
+          modelMs += Math.max(0, ms - (lastUserMs ?? ms));
+          prevRequestMs = ms;
+        }
         addUsage(usage, msg.usage);
         if (!usageByModel.has(model)) usageByModel.set(model, emptyUsage());
         addUsage(usageByModel.get(model), msg.usage);
@@ -257,12 +401,17 @@ for (const t of targets) {
         const one = emptyUsage();
         addUsage(one, u);
         requestCost.set(key, { billed: billedOf(one), cost: costOf(one, model) ?? 0 });
+      } else if (!Number.isNaN(ms) && lastAssistantMs !== null) {
+        modelMs += Math.max(0, ms - lastAssistantMs);
       }
+      if (!Number.isNaN(ms)) lastAssistantMs = ms;
       if (Array.isArray(msg.content) && key) {
         for (const b of msg.content) {
           if (b?.type !== 'tool_use') continue;
           toolCalls.set(b.name, (toolCalls.get(b.name) || 0) + 1);
           pendingTools.set(b.id, { name: b.name, input: b.input });
+          if (!Number.isNaN(ms)) toolStart.set(b.id, { ms, category: timeCategory(b.name, b.input) });
+          if (BY_REPO) for (const repo of reposOf(b.input)) repoCalls.set(repo, (repoCalls.get(repo) || 0) + 1);
           if (!callsByRequest.has(key)) { callsByRequest.set(key, []); requestOrder.push(key); }
           callsByRequest.get(key).push({ name: b.name, input: b.input });
         }
@@ -275,11 +424,23 @@ for (const t of targets) {
         chars = typeof ev.toolUseResult === 'string' ? ev.toolUseResult.length : JSON.stringify(ev.toolUseResult).length;
       } catch { /* несериализуемый результат пропускаем */ }
       let call = null;
+      let image = ev.toolUseResult?.type === 'image';
       if (Array.isArray(msg?.content)) {
-        for (const b of msg.content) if (b?.type === 'tool_result' && pendingTools.has(b.tool_use_id)) call = pendingTools.get(b.tool_use_id);
+        for (const b of msg.content) {
+          if (b?.type !== 'tool_result') continue;
+          if (pendingTools.has(b.tool_use_id)) call = pendingTools.get(b.tool_use_id);
+          if (isImageResult(ev, b)) image = true;
+        }
       }
       resultChars += chars;
-      if (chars > 60000) {
+      if (image) {
+        const img = {
+          run: t.name || t.session.slice(0, 8), role: t.role, tool: call?.name ?? 'unknown', chars, tokens: null,
+          hint: String(call?.input?.file_path ?? call?.input?.command ?? '').slice(0, 70),
+        };
+        images.push(img);
+        pendingImages.push(img);
+      } else if (chars > 60000) {
         bigResults.push({
           run: t.name || t.session.slice(0, 8), role: t.role, tool: call?.name ?? 'unknown', chars,
           hint: String(call?.input?.file_path ?? call?.input?.command ?? call?.input?.pattern ?? '').slice(0, 70),
@@ -343,9 +504,39 @@ for (const t of targets) {
     cost: +cost.toFixed(2), resultChars, models: [...usageByModel.keys()],
     first, last, sizeMb: +(statSync(t.path).size / 1048576).toFixed(1),
   };
-  // С `--since` заходы, целиком лежащие вне окна, из разбивок исключаются:
-  // иначе «заходов роли» считалось бы по всей истории при нулевом расходе в окне.
-  if (SINCE && usage.requests === 0) continue;
+  // С периодом заходы, целиком лежащие вне него, из разбивок исключаются:
+  // иначе «заходов роли» считалось бы по всей истории при нулевом расходе в периоде.
+  if (PERIOD && usage.requests === 0) continue;
+
+  if (TIME && firstMs !== null && lastMs > firstMs) {
+    // Инструменты одного хода идут параллельно — время инструментов есть объединение интервалов.
+    let tools = 0, from = null, to = null;
+    const byCategory = new Map();
+    for (const [s, e, category] of toolIntervals.sort((a, b) => a[0] - b[0])) {
+      byCategory.set(category, (byCategory.get(category) || 0) + (e - s));
+      if (from === null || s > to) { if (from !== null) tools += to - from; from = s; to = e; } else to = Math.max(to, e);
+    }
+    if (from !== null) tools += to - from;
+    const wall = lastMs - firstMs;
+    run.time = { wall, model: modelMs, tools, idle: Math.max(0, wall - modelMs - tools), byCategory: Object.fromEntries(byCategory) };
+    if (!timeByRole.has(t.role)) timeByRole.set(t.role, []);
+    timeByRole.get(t.role).push(run);
+  }
+
+  if (BY_REPO) {
+    // Деньги захода — пропорционально вызовам с путём в репозиторий.
+    const calls = [...repoCalls.values()].reduce((a, n) => a + n, 0);
+    const shares = calls ? [...repoCalls.entries()].map(([repo, n]) => [repo, n / calls]) : [['без репозитория', 1]];
+    for (const [repo, share] of shares) {
+      const g = byRepo.get(repo) || { runs: 0, requests: 0, billed: 0, cost: 0 };
+      g.runs += 1;
+      g.requests += usage.requests * share;
+      g.billed += billedOf(usage) * share;
+      g.cost += cost * share;
+      byRepo.set(repo, g);
+    }
+    run.repos = Object.fromEntries(repoCalls);
+  }
   runs.push(run);
 
   if (!byProject.has(t.project)) byProject.set(t.project, { usage: emptyUsage(), cost: 0 });
@@ -393,7 +584,8 @@ const modelRows = [...byModel.entries()].map(([model, u]) => {
 }).sort((a, b) => (b.cost || 0) - (a.cost || 0));
 
 perRequestBilled.sort((a, b) => a - b);
-const quantile = (q) => perRequestBilled[Math.floor(perRequestBilled.length * q)] || 0;
+const pick = (sorted, q) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * q))] || 0;
+const quantile = (q) => pick(perRequestBilled, q);
 
 const report = {
   dir, measuredAt: new Date().toISOString().slice(0, 10),
@@ -437,6 +629,29 @@ const report = {
   toolCalls: [...toolCalls.entries()].sort((a, b) => b[1] - a[1]),
   topReadFiles: [...readFiles.entries()].map(([file, g]) => ({ file, reads: g.reads, runs: g.runs.size })).sort((a, b) => b.reads - a.reads).slice(0, TOP * 2),
   bigResults: bigResults.sort((a, b) => b.chars - a.chars).slice(0, TOP),
+  cacheRewrite: {
+    byCause: [...missByCause.entries()].map(([cause, m]) => ({ cause, ...m, cost: +m.cost.toFixed(2) })).sort((a, b) => b.cost - a.cost),
+    byRole: [...missByRole.entries()].map(([role, m]) => ({ role, ...m, cost: +m.cost.toFixed(2) })).sort((a, b) => b.cost - a.cost),
+  },
+  startContext: [...startContext.entries()].map(([role, v]) => {
+    const s = [...v].sort((a, b) => a - b);
+    return { role, runs: s.length, median: pick(s, 0.5), min: s[0], max: s.at(-1) };
+  }).sort((a, b) => b.median - a.median),
+  images: (() => {
+    const measured = images.filter((i) => i.tokens !== null).map((i) => i.tokens).sort((a, b) => a - b);
+    return { count: images.length, measured: measured.length, medianTokens: pick(measured, 0.5), maxTokens: measured.at(-1) ?? 0, chars: images.reduce((a, i) => a + i.chars, 0) };
+  })(),
+  time: TIME ? [...timeByRole.entries()].map(([role, rs]) => {
+    const sum = (k) => rs.reduce((a, r) => a + r.time[k], 0);
+    const walls = rs.map((r) => r.time.wall).sort((a, b) => a - b);
+    const categories = {};
+    for (const r of rs) for (const [k, v] of Object.entries(r.time.byCategory)) categories[k] = (categories[k] || 0) + v;
+    return { role, runs: rs.length, wall: sum('wall'), median: pick(walls, 0.5), p90: pick(walls, 0.9), max: walls.at(-1), model: sum('model'), tools: sum('tools'), idle: sum('idle'), categories };
+  }).sort((a, b) => b.wall - a.wall) : null,
+  longestRuns: TIME ? runs.filter((r) => r.time).sort((a, b) => b.time.wall - a.time.wall).slice(0, TOP)
+    .map((r) => ({ role: r.role, session: r.session, desc: r.desc, ...r.time })) : null,
+  repoRows: BY_REPO ? [...byRepo.entries()].map(([repo, g]) => ({ repo, runs: g.runs, requests: Math.round(g.requests), billed: Math.round(g.billed), cost: +g.cost.toFixed(2) }))
+    .sort((a, b) => b.cost - a.cost) : null,
 };
 
 if (outJson) writeFileSync(outJson, JSON.stringify(report, null, 2), 'utf8');
@@ -447,7 +662,10 @@ report.projectRows = [...byProject.entries()]
 
 const t = report.totals;
 console.log(`каталог: ${dir}`);
-if (SINCE) console.log(`окно: с ${SINCE}`);
+if (PERIOD) {
+  const utc = (v) => (v === null ? '…' : new Date(v).toISOString().replace('.000Z', 'Z'));
+  console.log(`период (UTC): ${utc(SINCE_MS)} — ${utc(UNTIL_MS)}, конец не включается`);
+}
 console.log(`сессий ${report.mainSessions}, заходов ролей ${report.subagentRuns}, строк ${fmt(lines)}, нечитаемых ${badLines}`);
 console.log(`assistant-строк ${fmt(assistantRows)} -> запросов ${fmt(t.requests)} (строк на запрос ${report.rowsPerRequest})`);
 console.log(`input ${fmt(t.input)} | cache_read ${fmt(t.read)} | cache_write 5m ${fmt(t.write5m)} / 1h ${fmt(t.write1h)} | output ${fmt(t.output)}`);
@@ -513,7 +731,46 @@ for (const [name, n] of report.toolCalls.slice(0, TOP)) console.log(`${String(fm
 console.log('\n=== ЧАЩЕ ВСЕГО ЧИТАЕМЫЕ ФАЙЛЫ ===');
 for (const f of report.topReadFiles.slice(0, TOP)) console.log(`${String(f.reads).padStart(4)} чтений / ${String(f.runs).padStart(3)} заходов  ${f.file}`);
 
-console.log('\n=== КРУПНЕЙШИЕ РЕЗУЛЬТАТЫ ОДНОГО ВЫЗОВА ===');
+console.log('\n=== КРУПНЕЙШИЕ РЕЗУЛЬТАТЫ ОДНОГО ВЫЗОВА (без картинок) ===');
 for (const b of report.bigResults) console.log(`${String(Math.round(b.chars / 1024)).padStart(5)} КБ  ${b.tool.padEnd(10)} ${b.role.padEnd(16)} ${b.hint}`);
+
+const im = report.images;
+console.log('\n=== КАРТИНКИ В РЕЗУЛЬТАТАХ ===');
+console.log(`результатов ${fmt(im.count)}, base64 в логе ${fmt(Math.round(im.chars / 1024))} КБ; в контексте — по записи в кеш следующего запроса (${fmt(im.measured)} замерено): медиана ${fmt(im.medianTokens)}, макс ${fmt(im.maxTokens)} токенов на картинку`);
+
+const k = (n) => `${Math.round(n / 1000)}k`;
+console.log('\n=== СТАРТОВЫЙ КОНТЕКСТ ЗАХОДА ===');
+for (const s of report.startContext) console.log(`${s.role.padEnd(18)} заходов ${String(s.runs).padStart(4)}  медиана ${k(s.median).padStart(5)}  мин ${k(s.min).padStart(5)}  макс ${k(s.max).padStart(5)}`);
+
+const writeCost = modelRows.reduce((a, m) => a + (m.costWrite || 0), 0);
+const cr = report.cacheRewrite;
+const crTotal = cr.byCause.reduce((a, m) => ({ requests: a.requests + m.requests, write: a.write + m.write, cost: a.cost + m.cost }), { requests: 0, write: 0, cost: 0 });
+const crPaused = cr.byCause.filter((m) => m.cause !== 'без паузы').reduce((a, m) => ({ requests: a.requests + m.requests, cost: a.cost + m.cost }), { requests: 0, cost: 0 });
+console.log('\n=== ПЕРЕЗАПИСЬ КЕША (запись > половины контекста) ===');
+console.log(`запросов ${fmt(crTotal.requests)}, запись ${fmt(crTotal.write)}, $${fmt(crTotal.cost.toFixed(2))} — ${((crTotal.cost / Math.max(writeCost, 1e-9)) * 100).toFixed(0)}% денег на запись кеша, ${((crTotal.cost / Math.max(report.grandCostUsd, 1e-9)) * 100).toFixed(0)}% всего`);
+console.log(`из них после паузы > 5 мин: запросов ${fmt(crPaused.requests)}, $${fmt(crPaused.cost.toFixed(2))}`);
+for (const m of cr.byCause) console.log(`  ${m.cause.padEnd(32)} запросов ${String(fmt(m.requests)).padStart(5)}  запись ${String(fmt(m.write)).padStart(12)}  $${fmt(m.cost)}`);
+for (const m of cr.byRole) console.log(`  ${m.role.padEnd(18)} запросов ${String(fmt(m.requests)).padStart(5)} (после паузы ${fmt(m.paused)})  billed ${String(fmt(m.billed)).padStart(12)}  $${fmt(m.cost)}`);
+
+if (report.time) {
+  const mins = (v) => String(Math.round(v / 60000));
+  const pct = (v, w) => `${Math.round((v / Math.max(w, 1)) * 100)}%`;
+  console.log('\n=== ВРЕМЯ ЗАХОДОВ, минуты ===');
+  for (const r of report.time) {
+    console.log(`${r.role.padEnd(18)} заходов ${String(r.runs).padStart(4)}  сумма ${mins(r.wall).padStart(5)}  медиана ${mins(r.median).padStart(4)}  p90 ${mins(r.p90).padStart(4)}  макс ${mins(r.max).padStart(4)}  модель ${pct(r.model, r.wall)}  инструменты ${pct(r.tools, r.wall)}  простой ${pct(r.idle, r.wall)}`);
+    const cats = Object.entries(r.categories).filter(([, v]) => v >= 60000).sort((a, b) => b[1] - a[1]);
+    if (cats.length) console.log(`  ${cats.map(([c, v]) => `${c} ${mins(v)}`).join(', ')}`);
+  }
+  console.log('самые долгие заходы:');
+  for (const r of report.longestRuns) {
+    const top = Object.entries(r.byCategory).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([c, v]) => `${c} ${mins(v)}`).join(', ');
+    console.log(`  ${mins(r.wall).padStart(4)} мин  ${r.role.padEnd(18)} модель ${mins(r.model)}  инструменты ${mins(r.tools)}  простой ${mins(r.idle)} | ${top} | ${r.session.slice(0, 8)} ${(r.desc || '').slice(0, 40)}`);
+  }
+}
+
+if (report.repoRows) {
+  console.log('\n=== ПО РЕПОЗИТОРИЯМ (деньги захода — пропорционально вызовам) ===');
+  for (const r of report.repoRows) console.log(`${r.repo.padEnd(28)} заходов ${String(r.runs).padStart(4)}  запросов ~${String(fmt(r.requests)).padStart(6)}  billed ${String(fmt(r.billed)).padStart(14)}  $${fmt(r.cost)}`);
+}
 
 if (outJson) console.log(`\nполный отчёт: ${outJson}`);
