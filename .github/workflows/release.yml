@@ -1,0 +1,31 @@
+name: release
+
+# Релиз на GitHub — на каждую новую version в plugin.json: тег v<версия> на коммите push'а,
+# заголовок «beerpowers <версия>», описание — раздел версии из CHANGELOG.md. Версия, у которой
+# релиз уже есть, пропускается: правки без бампа релиз не трогают.
+
+on:
+  push:
+    branches: [main]
+    paths: [plugins/beerpowers/.claude-plugin/plugin.json]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Релиз версии из plugin.json, если его ещё нет
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v=$(node -p "require('./plugins/beerpowers/.claude-plugin/plugin.json').version")
+          if gh release view "v$v" > /dev/null 2>&1; then
+            echo "релиз v$v уже есть"
+            exit 0
+          fi
+          node .github/scripts/release_notes.mjs "$v" > "$RUNNER_TEMP/notes.md"
+          gh release create "v$v" --target "$GITHUB_SHA" --title "beerpowers $v" --notes-file "$RUNNER_TEMP/notes.md"
