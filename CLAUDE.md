@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Маркетплейс плагинов Claude Code с единственным плагином `beerpowers` — движком команды специализированных субагентов, который `/beerpowers:setup` разворачивает в workspace веб-продукта: бэкенд и фронтенд одним или несколькими репозиториями в `projects/`. Форк [qtim](https://github.com/toiiia/qtim-agent-team) 1.14.0; апстрим подключён remote'ом `upstream` для точечных cherry-pick. Основа — markdown-промпты и JSON-манифесты; исполняемое — хуки плагина (`hooks/*.sh`), шаблоны скриптов проекта (`templates/bin/*`), Workflow-скрипты и CI. «Код» — это и промпты: правки к ним предъявляют те же требования консистентности, что и к коду.
 
-Весь контент — на русском языке. Коммиты — conventional commits с русским описанием: `feat(setup): …`, `docs(readme): …`, `fix: …`, `chore: …`. При содержательных изменениях плагина бампай `version` в `plugins/beerpowers/.claude-plugin/plugin.json`.
+Весь контент — на русском языке. Коммиты — conventional commits с русским описанием: `feat(setup): …`, `docs(readme): …`, `fix: …`, `chore: …`. При содержательных изменениях плагина бампай `version` в `plugins/beerpowers/.claude-plugin/plugin.json`. Релиз на GitHub с тегом `v<версия>` и разделом версии из CHANGELOG создаёт `.github/workflows/release.yml` при push бампа в `main` — руками теги не ставятся.
 
 ## Структура
 
