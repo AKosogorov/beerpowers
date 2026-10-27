@@ -203,6 +203,35 @@ draft prose.md 'Фид (front)' Frontend '—' "Вступление без ша
 $sign"
 t "check: текст до первой секции — не шапка" 1 "только шапка" -- check "$tmp/d/prose.md"
 
+# where <файл> <тело секции «Где»>: черновик задачи с секцией «Где».
+where() {
+  draft "$1" 'Где купить (front)' Frontend '—' "## Цель
+
+Цель.
+
+## Где
+
+$2
+
+## Что делаем
+
+- Пункт.
+
+## Критерии приёмки
+
+- Критерий.
+
+$sign"
+}
+where where-root.md '- Стенд: https://dev.example.ru
+- Рабочий сайт: https://example.ru/'
+t "check: «Где» только с корнями сайтов — отказ" 1 "## Где: нет адреса страницы" -- check "$tmp/d/where-root.md"
+where where-figma.md '- Стенд: https://dev.example.ru
+- Макет: https://www.figma.com/design/abc/x?node-id=1-2'
+t "check: «Где» с корнем и макетом Figma — отказ" 1 "## Где: нет адреса страницы" -- check "$tmp/d/where-figma.md"
+where where-new.md '- Стенд: https://dev.example.ru/where-to-buy (сейчас 404)'
+t "check: «Где» с адресом новой страницы проходит" 0 "сходится с шаблоном" -- check "$tmp/d/where-new.md"
+
 cat > "$tmp/d/bug.md" <<EOF
 # Каталог: фильтр откатывает выбор (front)
 

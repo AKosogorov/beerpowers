@@ -209,6 +209,7 @@ function skeleton(type) {
     `## ${Array.isArray(name) ? name[0] : name}`,
     '',
     required ? '<обязательно>' : '<необязательно: нечего писать — секцию убрать>',
+    ...(name === 'Где' ? ['- <сайт>: <полный адрес страницы> (сейчас 404 — если страницы ещё нет)'] : []),
     '',
   ]);
   return [...head, ...body, OWN_SIGN || SIGN_ANY, ''].join('\n');
@@ -369,6 +370,7 @@ function checkDraft(d) {
     if (idx < at) errors.push(`секция «${s.name}» не на своём месте: порядок — ${want.map(([n]) => (Array.isArray(n) ? n[0] : n)).join(' → ')}`);
     at = Math.max(at, idx);
     if (!s.body.join('').trim()) errors.push(`секция «${s.name}» пустая — необязательную убрать, обязательную заполнить`);
+    else if (s.name === 'Где' && !hasPage(s.body.join('\n'))) errors.push('## Где: нет адреса страницы, только корень сайта или ничего — укажи полный адрес каждой страницы, которую задача создаёт или меняет (новая страница — адресом, по которому появится, даже если сейчас 404)');
   }
   for (const [n, required] of want) {
     const names = Array.isArray(n) ? n : [n];
@@ -390,6 +392,18 @@ function checkDraft(d) {
 
   const description = checkText(d.description, d.dir, errors, warnings);
   return { errors, warnings, type, links, description };
+}
+
+// В «## Где» есть адрес страницы: ссылка с путём длиннее «/». Корень сайта страницей
+// не считается, макет Figma — тоже.
+function hasPage(text) {
+  for (const m of text.matchAll(/https?:\/\/[^\s)<>\]]+/g)) {
+    let u;
+    try { u = new URL(m[0]); } catch { continue; }
+    if (/(^|\.)figma\.com$/.test(u.hostname)) continue;
+    if (u.pathname.replace(/\/+$/, '')) return true;
+  }
+  return false;
 }
 
 function report({ errors, warnings }) {
