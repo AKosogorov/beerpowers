@@ -2,6 +2,26 @@
 
 Версии соответствуют `version` в `plugins/beerpowers/.claude-plugin/plugin.json` (semver). Пометка «update» у версии говорит, нужно ли в собранных проектах запускать `/beerpowers:update` (реестр миграций — `plugins/beerpowers/reference/migrations.md`). В истории qtim ниже та же пометка называется «team-sync» — по прежнему имени команды.
 
+## 2.14.0 — 2026-10-27
+
+> update: рекомендуется — блоки `forks` и `tracker-write` в `.claude/team-lead.md`, копия
+> `.claude/reference/hooks.md`, ключ `guard-approval-link` в `workspace.json`; сам барьер
+> приходит с плагином.
+
+### 🔧 Исправлено
+
+- **Артефакт выносится на утверждение только со ссылкой на файл.** Team-lead спросил
+  «Утверждаешь бриф?» с пересказом решения, но без ссылки на `design-brief.md` — человек просил
+  её отдельно. Правило в `team-lead.md`, «Развилки с пользователем»: ссылка на файл и карточка
+  `SendUserFile` в том же сообщении, что и вопрос, путь — и в тексте вопроса; intake-протокол
+  и запись в трекер ссылаются на него.
+
+### ✨ Добавлено
+
+- **Барьер `guard-approval-link`** на `AskUserQuestion`: вопрос со словами утверждения (бриф, ADR,
+  план, черновик, approve) без пути к файлу задачи, ADR или `.md` отклоняется один раз с требованием
+  дать ссылку и `SendUserFile`; повтор того же вопроса проходит. Флаг `barriers.guard-approval-link`.
+
 ## 2.13.0 — 2026-10-27
 
 > update: требуется — блок `tracker-write` в `.claude/team-lead.md`, копия

@@ -56,7 +56,7 @@ description: Проверить, что команда работает на э�
    Шаблона под имя копии нет → **warn**: скрипт убран из плагина. Файл без шапки — проектный,
    не сверяется.
 7. **Барьеры.** Таблица «барьер · флаг в `workspace.json` · итог» для `guard-push`,
-   `guard-kill`, `guard-comments`, `guard-commit-split` (+ `guard-agent-memory` — всегда).
+   `guard-kill`, `guard-comments`, `guard-commit-split`, `guard-approval-link` (+ `guard-agent-memory` — всегда).
    В `.claude/settings.json` проекта не осталось хуков, которые дублируют барьеры плагина
    (`guard-*.sh` из `.claude/hooks/`) → иначе **warn**: каждая команда проверяется дважды, а
    правка барьера в плагине до проекта не доходит; фикс — `/beerpowers:update`. Хуки под стек
