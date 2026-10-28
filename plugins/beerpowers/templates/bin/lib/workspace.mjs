@@ -23,7 +23,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const BARRIERS = ['guard-push', 'guard-kill', 'guard-comments', 'guard-commit-split'];
+export const BARRIERS = ['guard-push', 'guard-kill', 'guard-comments', 'guard-commit-split', 'guard-approval-link'];
 // Каталоги — константы, а не ключи: хук без node читал бы ключ на каждой команде Bash.
 export const PROJECTS_DIR = 'projects';
 export const WORKTREES_DIR = 'worktrees';

@@ -2,6 +2,18 @@
 
 Версии соответствуют `version` в `plugins/beerpowers/.claude-plugin/plugin.json` (semver). Пометка «update» у версии говорит, нужно ли в собранных проектах запускать `/beerpowers:update` (реестр миграций — `plugins/beerpowers/reference/migrations.md`). В истории qtim ниже та же пометка называется «team-sync» — по прежнему имени команды.
 
+## 2.14.1 — 2026-10-28
+
+> update: требуется — копия `.claude/bin/lib/workspace.mjs`; проекту, где update 2.14.0 не записал
+> ключ `guard-approval-link` в `workspace.json`, — дописать его.
+
+### 🔧 Исправлено
+
+- **Схема `workspace.json` знает барьер `guard-approval-link`.** Миграция 2.14.0 велела записать
+  ключ в раздел `barriers`, а `lib/workspace.mjs` не знал такого барьера: `workspace-check` падал
+  на «ключи и типы», и выключить барьер флагом было нельзя. Тест `workspace-check` сверяет
+  барьеры эталона со схемой.
+
 ## 2.14.0 — 2026-10-27
 
 > update: рекомендуется — блоки `forks` и `tracker-write` в `.claude/team-lead.md`, копии

@@ -40,6 +40,12 @@ case "$out" in
   *) ko "эталон без роли product — ссылки целы" "$out" ;;
 esac
 
+# Схема барьеров в lib/workspace.mjs знает каждый барьер эталона: ключ, который миграция велит
+# записать в workspace.json, иначе роняет проверку «ключи и типы».
+out=$(WORKSPACE_ROOT="$tmp/ws" node "$check" 2>&1 | grep 'неизвестный барьер')
+if [ -z "$out" ]; then ok "барьеры эталона известны схеме workspace.json"
+else ko "барьеры эталона известны схеме workspace.json" "$out"; fi
+
 cp "$plugin/templates/roles/product-agent.md" "$tmp/ws/.claude/agents/product-agent.md"
 
 out=$(links)
