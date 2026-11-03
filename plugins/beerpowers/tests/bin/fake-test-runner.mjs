@@ -6,7 +6,8 @@
 //
 // Файл теста — строка «cases=3 time=0.2 fail=1»: столько testcase, столько секунд сна на файл,
 // столько упавших. Каждый запуск дописывает в $REPORT/<вид>-<слот>.txt, с какими переменными
-// и аргументами его позвали.
+// и аргументами его позвали, а в $REPORT/global-setup.txt — строку: так считается, сколько раз
+// настоящий раннер выполнил бы globalSetup, который идёт по разу на процесс.
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -21,6 +22,8 @@ if (args[0] === '--prepare') {
   report('prepare', [`slot=${process.env.BEERPOWERS_TEST_SLOT}`, `db=${process.env.DB_NAME ?? ''}`]);
   process.exit(Number(process.env.FAKE_PREPARE_CODE ?? 0));
 }
+
+if (process.env.REPORT) fs.appendFileSync(path.join(process.env.REPORT, 'global-setup.txt'), `${process.pid}\n`);
 
 const [junit, ...rest] = args;
 let files = rest;

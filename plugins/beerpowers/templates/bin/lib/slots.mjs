@@ -4,8 +4,8 @@
 // Общее у parallel-tests.mjs и mutants.mjs: слоты машины, запуск процессов с гашением
 // своих по своим PID, подстановки шаблонов настроек tests. Модуль, не команда.
 //
-// Слоты — общие на машину, а не на сессию: тесты упираются в задержку базы и сервисов,
-// и все прогоны всех сессий машины делят одно число процессов. Захват — файл slot-<номер>
+// Слоты — общие на машину, а не на сессию: все прогоны всех сессий машины делят одно число
+// процессов. Захват — файл slot-<номер>
 // с PID владельца в общем каталоге; номер слота уникален среди одновременных прогонов,
 // поэтому база или копия дерева с номером в имени не пересекается с соседней сессией.
 
@@ -28,7 +28,9 @@ export const SLOTS_DIR = process.env.BEERPOWERS_TEST_SLOTS_DIR
 const LOCK_STALE_MS = 10_000;
 const mine = new Set();
 
-// Лимит: личная переменная машины → tests.slots проекта → число логических ядер.
+// Лимит: личная переменная машины → tests.slots проекта, но не больше ядер этой машины → число
+// логических ядер. tests.slots лежит в общем файле и едет на машины с другим числом ядер;
+// превысить ядра может только личная переменная: её ставит тот, кто знает свою машину.
 export function slotLimit(ws) {
   const own = process.env.BEERPOWERS_TEST_SLOTS;
   if (own) {
@@ -36,8 +38,13 @@ export function slotLimit(ws) {
     if (!Number.isInteger(n) || n < 1) fail(`BEERPOWERS_TEST_SLOTS=${own} — ждётся целое больше нуля`);
     return { n, from: 'BEERPOWERS_TEST_SLOTS' };
   }
-  if (ws.tests.slots) return { n: ws.tests.slots, from: 'tests.slots' };
-  return { n: os.availableParallelism(), from: 'число ядер' };
+  const cores = os.availableParallelism();
+  if (ws.tests.slots) {
+    return ws.tests.slots > cores
+      ? { n: cores, from: `число ядер, tests.slots=${ws.tests.slots} больше` }
+      : { n: ws.tests.slots, from: 'tests.slots' };
+  }
+  return { n: cores, from: 'число ядер' };
 }
 
 const alive = (pid) => {

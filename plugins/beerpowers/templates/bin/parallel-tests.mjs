@@ -16,11 +16,10 @@
 // прогоны старше семи дней оттуда убираются. Без нового прогона их убирает любой вызов
 // .claude/bin/workspace-clean, раньше срока — с --keep-days.
 //
-// Слоты — общие на машину, а не на сессию: тесты упираются в задержку базы и сервисов,
-// а не в процессор, поэтому параллель масштабируется почти линейно, пока процессор
-// не занят весь, — и все прогоны всех сессий машины делят одно число процессов. Лимит —
-// личная переменная BEERPOWERS_TEST_SLOTS (env файла .claude/settings.local.json) →
-// tests.slots в workspace.json → число логических ядер. Прогон берёт min(запрошено,
+// Слоты — общие на машину, а не на сессию: все прогоны всех сессий машины делят одно число
+// процессов. Лимит — личная переменная BEERPOWERS_TEST_SLOTS (env файла
+// .claude/settings.local.json) → tests.slots в workspace.json, но не больше ядер этой машины →
+// число логических ядер. Прогон берёт min(запрошено,
 // свободно); свободных нет — ждёт. Запрошено — tests.repos.<репо>.workers или --workers,
 // иначе лимит, поделённый на число репозиториев вызова: репозитории идут одновременно.
 //
@@ -29,12 +28,13 @@
 // перед тестами каждого прогона — она обязана быть идемпотентной: базу создать, если её нет,
 // миграции применить.
 //
-// Режим split: файлы по маскам files минус exclude делятся на столько групп, сколько слотов
+// Режим split — для раннера без своей параллели (PHPUnit): файлы по маскам files минус exclude делятся на столько групп, сколько слотов
 // получено, жадно по времени из junit прошлого прогона (нет junit — по числу файлов), каждая
 // группа — свой процесс команды с {files}. Командная строка длиннее предела оболочки
 // (cmd.exe на Windows — 8191 знак) режется на несколько запусков подряд в том же воркере.
-// Режим native: у фреймворка своя параллель (Jest --maxWorkers) — один процесс команды
-// с {n}; переменные с {i} получает только подготовка, по разу на слот, а номер воркера
+// Режим native — для раннера со своей параллелью (Vitest и Jest --maxWorkers={n}): один процесс
+// команды с {n}, один globalSetup на прогон; split умножил бы воркеры раннера и globalSetup на
+// число слотов, об этом строка WARN в начале прогона и в --dry-run. Переменные с {i} получает только подготовка, по разу на слот, а номер воркера
 // фреймворка в номер слота переводит настройка тестов проекта по BEERPOWERS_TEST_SLOTS.
 //
 // Подстановки: {i} — слот воркера, {n} — число слотов прогона, {slots} — их номера через
@@ -46,7 +46,8 @@
 // на остальных) из каталога {dir}. Воркер получает и BEERPOWERS_TEST_SLOT, и
 // BEERPOWERS_TEST_SLOTS.
 //
-// Вывод: строка START на репозиторий (с коммитом head=<sha> и tree=clean|dirty — есть ли
+// Вывод: строка MACHINE — потоки, память и лимит машины, чтобы логи разных машин сравнивались;
+// строка START на репозиторий (с коммитом head=<sha> и tree=clean|dirty — есть ли
 // в дереве незакоммиченное), строка done на воркер, затем итог — REPO на
 // репозиторий, под ней воркеры и упавшие тесты, TOTAL repos=… tests=… failed=… и последней
 // строкой CODE=<код выхода>: 0 — всё зелёное, 1 — упали тесты, подготовка или запуск,
@@ -55,6 +56,7 @@
 
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { findRoot, loadWorkspace, PROJECTS_DIR, WORKTREES_DIR } from './lib/workspace.mjs';
@@ -232,6 +234,8 @@ const stamp = () => {
   return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
 };
 
+const OWN_PARALLEL = /\b(?:vitest|jest|playwright)\b/;
+
 async function runRepo(name, cfg, want, ctx) {
   const { root, limit, outRoot } = ctx;
   const dirRel = opts.task ? `${WORKTREES_DIR}/${opts.task}/${name}` : `${PROJECTS_DIR}/${name}`;
@@ -268,6 +272,10 @@ async function runRepo(name, cfg, want, ctx) {
   }
 
   const n = ids.length;
+  if (cfg.mode === 'split' && n > 1) {
+    const runner = cfg.command.match(OWN_PARALLEL)?.[0];
+    if (runner) say(`WARN ${name}: у ${runner} своя параллель, а split запустит ${n} процессов раннера — воркеры и globalSetup умножатся на ${n}. Нужен mode native с числом воркеров {n}`);
+  }
   const repoOut = path.join(outRoot, name);
   if (!opts.dryRun) fs.mkdirSync(repoOut, { recursive: true });
   const common = { n, slots: ids.join(','), repo: name, dir, root };
@@ -480,6 +488,7 @@ async function main() {
     } catch { /* каталога прогонов ещё нет */ }
   }
 
+  say(`MACHINE потоков=${os.availableParallelism()} память=${Math.round(os.totalmem() / 2 ** 30)}ГБ лимит=${limit.n} (${limit.from})`);
   const t0 = Date.now();
   const share = Math.max(1, Math.floor(limit.n / names.length));
   const start = (name) => {
