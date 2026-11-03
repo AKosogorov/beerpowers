@@ -213,6 +213,60 @@ else ko "START — коммит прогона и чистота дерева, �
 ---
 $out2"; fi
 
+# 16. Раннер со своей параллелью: split — WARN и globalSetup на каждый процесс, native — ни того,
+# ни другого. Имя файла раннера здесь — vitest.mjs: предупреждение смотрит на команду.
+cp "$here/fake-test-runner.mjs" "$tmp/vitest.mjs"
+vitest=$(native "$tmp/vitest.mjs")
+cat > "$ws/.claude/workspace.json" <<EOF
+{
+  "beerpowers": "2.3.0",
+  "tests": {
+    "repos": {
+      "vsplit": { "command": "node \"$vitest\" \"{junit}\" {files}", "files": ["tests/*Test.php"], "env": { "REPORT": "{root}/report" } },
+      "vnative": { "mode": "native", "command": "node \"$vitest\" \"{junit}\" --native {n}", "env": { "REPORT": "{root}/report" } }
+    }
+  }
+}
+EOF
+mkdir -p "$ws/projects/vsplit/.git" "$ws/projects/vsplit/tests" "$ws/projects/vnative/.git" "$ws/projects/vnative/tests"
+for f in A B C; do printf 'cases=1 time=0.05\n' > "$ws/projects/vsplit/tests/${f}Test.php"; printf 'cases=1 time=0.05\n' > "$ws/projects/vnative/tests/${f}Test.php"; done
+rm -f "$ws/report"/*
+plan=$(BEERPOWERS_TEST_SLOTS=3 pt --repos vsplit --dry-run)
+out=$(BEERPOWERS_TEST_SLOTS=3 pt --repos vsplit)
+marks=$(wc -l < "$ws/report/global-setup.txt" | tr -d ' ')
+if has "$plan" '^WARN vsplit: у vitest своя параллель.*умножатся на 3' && has "$out" '^WARN vsplit: ' && [ "$marks" = 3 ]; then
+  ok "split с vitest — WARN в --dry-run и в прогоне, globalSetup на каждый из 3 процессов"
+else ko "split с vitest — WARN в --dry-run и в прогоне, globalSetup на каждый из 3 процессов (меток $marks)" "$plan
+---
+$out"; fi
+rm -f "$ws/report"/*
+out=$(BEERPOWERS_TEST_SLOTS=3 pt --repos vnative)
+marks=$(wc -l < "$ws/report/global-setup.txt" | tr -d ' ')
+if ! has "$out" '^WARN' && [ "$marks" = 1 ] && has "$out" '^REPO vnative .*tests=3 failed=0 .*status=ok' && grep -q '^n=3$' "$ws/report/run-all.txt"; then
+  ok "native с vitest — без WARN, globalSetup один раз, {n}=3"
+else ko "native с vitest — без WARN, globalSetup один раз, {n}=3 (меток $marks)" "$out"; fi
+
+# 17. Один процесс раннера не умножает ничего — WARN нет.
+out=$(BEERPOWERS_TEST_SLOTS=3 pt --repos vsplit --workers 1 --dry-run)
+if ! has "$out" '^WARN'; then ok "split с vitest на одном слоте — без WARN"; else ko "split с vitest на одном слоте — без WARN" "$out"; fi
+
+# 18. tests.slots из общего файла не больше ядер этой машины, личная переменная сильнее.
+cat > "$ws/.claude/workspace.json" <<EOF
+{ "beerpowers": "2.3.0", "tests": { "slots": 100000, "repos": { "other": { "command": "node \"$runner\" \"{junit}\" {files}", "files": ["tests/*Test.php"] } } } }
+EOF
+cores=$(node -p 'require("os").availableParallelism()')
+out=$(pt --status)
+own=$(BEERPOWERS_TEST_SLOTS=100000 pt --status)
+if has "$out" "лимит $cores (число ядер, tests.slots=100000 больше)" && has "$own" 'лимит 100000 (BEERPOWERS_TEST_SLOTS)'; then
+  ok "tests.slots выше ядер — лимит по ядрам; BEERPOWERS_TEST_SLOTS превышает ядра"
+else ko "tests.slots выше ядер — лимит по ядрам; BEERPOWERS_TEST_SLOTS превышает ядра" "$out
+---
+$own"; fi
+out=$(BEERPOWERS_TEST_SLOTS=2 pt --repos other)
+if has "$out" "^MACHINE потоков=$cores память=[0-9]*ГБ лимит=2 (BEERPOWERS_TEST_SLOTS)"; then
+  ok "строка MACHINE — потоки, память, лимит и откуда он"
+else ko "строка MACHINE — потоки, память, лимит и откуда он" "$out"; fi
+
 echo
 echo "$total случаев, упало $failed"
 [ "$failed" = 0 ]

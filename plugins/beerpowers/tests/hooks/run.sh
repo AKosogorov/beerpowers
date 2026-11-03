@@ -203,6 +203,28 @@ fx_comments_hash() {
   stage "$1" app/job.py '# пересказ на питоне'
 }
 
+fx_comments_context() {
+  charter "$1"
+  repo "$1"
+  stage "$1" src/a.ts '// см. B3'
+  stage "$1" src/b.ts 'const a = 1 // ответ 28'
+  stage "$1" app/job.py '# разбор в memory/tasks/X-1/brief.md'
+}
+
+fx_comments_context_code() {
+  charter "$1"
+  repo "$1"
+  git -C "$1" checkout -q -b feature/SHOP-12-cart
+  stage "$1" src/a.ts '// так решили в SHOP-12'
+}
+
+fx_comments_plain() {
+  charter "$1"
+  repo "$1"
+  stage "$1" src/a.ts 'const C2 = 1 // Safari режет заголовок, поэтому своя копия'
+  stage "$1" src/b.ts '// после Vue3 порядок хуков другой'
+}
+
 fx_comments_trailing() {
   charter "$1"
   repo "$1"

@@ -86,6 +86,12 @@ pass | guard-comments | comments-copies | копии плагина с шапк�
 deny:свой скрипт проекта | guard-comments | comments-copies-own | проектный скрипт рядом с копиями показывается | {"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}
 pass | guard-comments | comments-none | без комментариев: URL, shebang, атрибут PHP | {"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}
 deny:пересказ на питоне | guard-comments | comments-hash | комментарий # | {"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}
+deny:Ссылаются на контекст задачи | guard-comments | comments-context | метка, «ответ N» и memory/tasks названы отдельно | {"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}
+deny:см. B3 | guard-comments | comments-context | метка charter в тексте комментария | {"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}
+deny:const a = 1 // ответ 28 | guard-comments | comments-context | «ответ N» в хвостовом комментарии | {"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}
+lacks:контекст задачи | guard-comments | comments-context-code | голый код задачи — не ссылка на контекст | {"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}
+deny:Safari режет | guard-comments | comments-plain | обычное «почему» показано | {"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}
+lacks:контекст задачи | guard-comments | comments-plain | C2 в коде перед комментарием и Vue3 — не ссылка на задачу | {"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}
 deny:хвостовой пересказ | guard-comments | comments-trailing | комментарий в конце строки // | {"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}
 deny:хвост в yaml | guard-comments | comments-trailing | комментарий в конце строки # | {"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}
 deny:пересказ в blade | guard-comments | comments-blade | комментарий Blade | {"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}
