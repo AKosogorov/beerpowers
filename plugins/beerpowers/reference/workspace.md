@@ -26,6 +26,7 @@
   "barriers": {
     "guard-push": true,
     "guard-kill": true,
+    "guard-stdin-code": true,
     "guard-comments": true,
     "guard-commit-split": true,
     "guard-approval-link": true

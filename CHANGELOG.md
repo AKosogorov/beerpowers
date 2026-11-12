@@ -2,6 +2,24 @@
 
 Версии соответствуют `version` в `plugins/beerpowers/.claude-plugin/plugin.json` (semver). Пометка «update» у версии говорит, нужно ли в собранных проектах запускать `/beerpowers:update` (реестр миграций — `plugins/beerpowers/reference/migrations.md`). В истории qtim ниже та же пометка называется «team-sync» — по прежнему имени команды.
 
+## 2.17.0 — 2026-11-12
+
+> update: рекомендуется — блок `shell` в `team-charter.md`, копии `.claude/reference/hooks.md`
+> и `.claude/bin/lib/workspace.mjs`, ключ `guard-stdin-code` в `barriers` файла `workspace.json`.
+
+### ✨ Добавлено
+
+- **Барьер `guard-stdin-code`.** Не пускает `python`, `py`, `node`, `php`, `ruby`, `perl`
+  с кодом из stdin: `python - <<'EOF'`, `cat x | python -`, `cat x.py | python3`,
+  `php <<< "…"`, `python < fix.py`. Скрипт по пути, код аргументом (`-c`, `-e`, `-r`) и модуль
+  (`-m`) проходят. На Windows в Git Bash такой процесс переживает команду и держит ядро
+  процессора часами: три `python.exe` грузили машину до 98 %. Python 3.13 в этой форме уходит
+  в интерактивный REPL и крутит в цикле ошибку консоли.
+- **Правило charter:** интерпретатор не получает код из stdin; правка файла — `Edit`/`Write`,
+  разовый скрипт — файл в scratchpad и запуск по пути.
+- **`/beerpowers:doctor` называет висящие интерпретаторы** без родительского shell по `ps`
+  Git Bash (без WMI) и даёт человеку `taskkill` по PID; сам процессы не гасит.
+
 ## 2.16.0 — 2026-11-03
 
 > update: рекомендуется — блоки `processes`, `evidence-discipline` и `code-hygiene` в

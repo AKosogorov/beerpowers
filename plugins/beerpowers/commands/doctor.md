@@ -56,7 +56,8 @@ description: Проверить, что команда работает на э�
    Шаблона под имя копии нет → **warn**: скрипт убран из плагина. Файл без шапки — проектный,
    не сверяется.
 7. **Барьеры.** Таблица «барьер · флаг в `workspace.json` · итог» для `guard-push`,
-   `guard-kill`, `guard-comments`, `guard-commit-split`, `guard-approval-link` (+ `guard-agent-memory` — всегда).
+   `guard-kill`, `guard-stdin-code`, `guard-comments`, `guard-commit-split`, `guard-approval-link`
+   (+ `guard-agent-memory` — всегда).
    В `.claude/settings.json` проекта не осталось хуков, которые дублируют барьеры плагина
    (`guard-*.sh` из `.claude/hooks/`) → иначе **warn**: каждая команда проверяется дважды, а
    правка барьера в плагине до проекта не доходит; фикс — `/beerpowers:update`. Хуки под стек
@@ -175,7 +176,14 @@ description: Проверить, что команда работает на э�
     - скопирован `yandex-tracker`, `yandex-tracker-write.mjs` или `figma-export` — их `--help` отвечает, а токен в личных
       настройках есть (значение не печатать, только факт наличия);
     - личные переменные из `env` файла `.claude/settings.local.json`, которые указывают на файл
-      (`BEERPOWERS_CHROME`), указывают на существующий.
+      (`BEERPOWERS_CHROME`), указывают на существующий;
+    - только Windows, Git Bash: висящие интерпретаторы — `timeout 60 ps`, строки, где имя
+      в `COMMAND` — `python*`, `py`, `node`, `php`, `ruby` или `perl`, а `PPID` равен 1 или
+      не встречается в колонке `PID`: родительский shell завершился, процесс остался. WMI
+      не используется (charter, «Процессы»). Есть такие → **warn** с таблицей `WINPID`,
+      `STIME`, команда; типовой источник — код интерпретатору через stdin (`guard-stdin-code`).
+      Фикс — человеку, по строке на процесс: `taskkill //F //PID <WINPID> //T`, после того как
+      он узнал в нём не свой dev-сервер. Doctor сам процессы не гасит.
 
 ## Вывод
 

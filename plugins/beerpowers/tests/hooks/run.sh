@@ -85,6 +85,7 @@ WS_ALL_OFF='{
   "barriers": {
     "guard-push": false,
     "guard-kill": false,
+    "guard-stdin-code": false,
     "guard-comments": false,
     "guard-commit-split": false,
     "guard-approval-link": false,
