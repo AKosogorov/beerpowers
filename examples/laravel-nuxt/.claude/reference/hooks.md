@@ -16,6 +16,7 @@
 |---|---|---|---|---|
 | `guard-push` | PreToolUse `Bash` | есть | включён | ветки и хостинг — из git репозитория |
 | `guard-kill` | PreToolUse `Bash` | есть | включён | — |
+| `guard-stdin-code` | PreToolUse `Bash` | есть | включён | — |
 | `guard-comments` | PreToolUse `Bash` | есть | включён | `comments.excludeDirs` |
 | `guard-commit-split` | PreToolUse `Bash` | есть | включён | — |
 | `guard-approval-link` | PreToolUse `AskUserQuestion` | есть | включён | — |
@@ -26,7 +27,8 @@
 ## Как хук читает `workspace.json`
 
 **Сначала — ранний отсев.** Барьер на `Bash` ищет в сыром событии своё слово (`push`,
-`commit`, `kill` или `Stop-Process`) и без него выходит, не читая флаг и не разбирая JSON:
+`commit`, `kill` или `Stop-Process`; у `guard-stdin-code` — имя интерпретатора вместе с `<`, `|`
+или ` - `) и без него выходит, не читая флаг и не разбирая JSON:
 барьеры идут на каждой команде, а запуск `sed` на Windows стоит десятки миллисекунд.
 `guard-user-files` так же выходит, если окно не открыто.
 
@@ -117,6 +119,20 @@ rebase'ом, и после него обычный push отклоняется; 
 `taskkill //F //PID <pid> //T`, `kill -9 <pid>`, `Stop-Process -Id <pid>`. Цена ошибки —
 снесённый браузер пользователя вместе с его окнами: роль, прибирая свой headless-браузер,
 убивает все процессы с тем же именем образа.
+
+## `guard-stdin-code` — код интерпретатору через stdin
+
+Блокирует запуск `python`, `py`, `node`, `php`, `ruby`, `perl`, которым код приходит через stdin:
+аргумент `-` (`python - <<'EOF'`, `cat x | python -`), here-документ или here-строка без скрипта
+(`node <<EOF`, `php <<< "…"`), конвейер или перенаправление в интерпретатор без скрипта
+(`cat x.py | python3`, `python < fix.py`). Обёртки `timeout 60`, `env` и присваивания перед
+именем не мешают разбору. Проходит скрипт по пути (`python fix.py`, в том числе с here-документом —
+это данные скрипту), код аргументом (`python -c`, `node -e`, `php -r`) и модуль
+(`cat a.json | python -m json.tool`). Цена ошибки — процесс, который на Windows в Git Bash
+переживает команду и часами держит ядро процессора: Python 3.13 в такой форме уходит
+в интерактивный REPL и крутит в цикле ошибку консоли `WinError 123`. Роли выбирали эту форму для правки файлов
+в обход правила «файлы пишем `Write`/`Edit`». Включается флагом `barriers.guard-stdin-code`
+в `.claude/workspace.json`; нет флага — включён.
 
 ## `guard-comments` — комментарии в коде
 

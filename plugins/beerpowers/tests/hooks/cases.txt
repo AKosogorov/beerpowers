@@ -73,6 +73,28 @@ pass | guard-kill | defaults | посторонняя команда | {"tool_na
 pass | guard-kill | all-off | флаг false | {"tool_name":"Bash","tool_input":{"command":"pkill node"}}
 pass | guard-kill | nocharter | нет charter | {"tool_name":"Bash","tool_input":{"command":"pkill node"}}
 
+# --- guard-stdin-code: отказы ---
+deny | guard-stdin-code | defaults | python - с here-документом | {"tool_name":"Bash","tool_input":{"command":"python - <<'EOF'\nopen('a.txt','w').write('x')\nEOF\n|| echo fallback"}}
+deny | guard-stdin-code | defaults | конвейер в python - | {"tool_name":"Bash","tool_input":{"command":"cat x.py | python -"}}
+deny | guard-stdin-code | defaults | конвейер в python без аргументов | {"tool_name":"Bash","tool_input":{"command":"cat x.py | python3"}}
+deny | guard-stdin-code | defaults | here-документ без дефиса | {"tool_name":"Bash","tool_input":{"command":"node <<EOF\nconsole.log(1)\nEOF"}}
+deny | guard-stdin-code | defaults | here-строка | {"tool_name":"Bash","tool_input":{"command":"php <<< \"<?php echo 1;\""}}
+deny | guard-stdin-code | defaults | here-документ в cat, конвейер в python | {"tool_name":"Bash","tool_input":{"command":"cat <<'EOF' | python\nprint(1)\nEOF"}}
+deny | guard-stdin-code | defaults | перенаправление файла | {"tool_name":"Bash","tool_input":{"command":"python < fix.py"}}
+deny | guard-stdin-code | defaults | обёртка timeout и py.exe | {"tool_name":"Bash","tool_input":{"command":"timeout 60 py.exe -3 - <<EOF\nprint(1)\nEOF"}}
+deny | guard-stdin-code | defaults | второй сегмент | {"tool_name":"Bash","tool_input":{"command":"cd x && ruby - < y.rb"}}
+
+# --- guard-stdin-code: разрешённое ---
+pass | guard-stdin-code | defaults | скрипт по пути | {"tool_name":"Bash","tool_input":{"command":"python script.py"}}
+pass | guard-stdin-code | defaults | here-документ — данные скрипту | {"tool_name":"Bash","tool_input":{"command":"python fix.py <<'EOF'\ndata\nEOF"}}
+pass | guard-stdin-code | defaults | код аргументом -c | {"tool_name":"Bash","tool_input":{"command":"python -c \"print(1)\" < in.txt"}}
+pass | guard-stdin-code | defaults | модуль читает данные из конвейера | {"tool_name":"Bash","tool_input":{"command":"cat a.json | python -m json.tool"}}
+pass | guard-stdin-code | defaults | вывод интерпретатора в конвейер | {"tool_name":"Bash","tool_input":{"command":"node -v | head -1"}}
+pass | guard-stdin-code | defaults | форма в кавычках — данные | {"tool_name":"Bash","tool_input":{"command":"echo \"cat x | python -\""}}
+pass | guard-stdin-code | defaults | heredoc не в интерпретатор | {"tool_name":"Bash","tool_input":{"command":"cat > a.txt <<EOF\npython - x\nEOF"}}
+pass | guard-stdin-code | all-off | флаг false | {"tool_name":"Bash","tool_input":{"command":"cat x.py | python -"}}
+pass | guard-stdin-code | nocharter | нет charter | {"tool_name":"Bash","tool_input":{"command":"cat x.py | python -"}}
+
 # --- guard-comments ---
 pass | guard-comments | comments | ранний отсев: в событии нет слова commit | {"tool_name":"Bash","tool_input":{"command":"git status"}}
 pass | guard-comments | comments | commit в пути, подкоманда rm | {"tool_name":"Bash","tool_input":{"command":"git rm .claude/hooks/guard-commit-split.sh"}}
