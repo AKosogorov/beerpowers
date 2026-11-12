@@ -632,3 +632,28 @@ Engine-блок `shell` в `.claude/team-charter.md`: пункт «Интерп�
 
 Копия `.claude/bin/lib/workspace.mjs`: `guard-stdin-code` в списке барьеров — иначе
 `workspace-check.mjs` считает ключ неизвестным.
+
+## → 2.18.0
+
+Прогон по ширинам сокращается для правки без вёрстки. Правка в две строки — начальное значение
+поля в сторе и удалённый `placeholder` — шла на четырёх ширинах в двух брендах: self-check
+`front` около 38 минут, прогон `tester` около 43 минут и 56 скриншотов, финальный `reviewer`
+сверял все кадры. Всё, что эти прогоны проверяли, от ширины не зависело.
+
+Только при `ui: true`. Engine-блоки:
+
+- `.claude/team-charter.md` — новый блок `viewports-scope` «Прогон по ширинам»: определение
+  правки без вёрстки и решение в `preflight.md`. Добавляется сразу после блока
+  `ui-findings-report`;
+- `.claude/team-lead.md`, `gates` — абзац «Прогон по ширинам — до брифа»: `layout-check.mjs`,
+  вопрос человеку, строка в `preflight.md`;
+- `.claude/agents/frontend-agent.md`, `self-check` — одна ширина по решению `preflight.md`;
+- `.claude/agents/testing-agent.md`, `real-browser` и `checklist-ui` — то же и строка
+  «Ширины» в отчёте;
+- `.claude/agents/reviewer-agent.md`, `screenshots-gate` — при решении требуется одна ширина,
+  нехватка остальных находкой не считается.
+
+Новая копия `.claude/bin/layout-check.mjs` (шапка с версией, как у остальных копий) и правило
+`Bash(node .claude/bin/layout-check.mjs:*)` в `permissions.allow` файла `.claude/settings.json`:
+файл в автоматическом режиме правит человек, update готовит итоговый `settings.json` и дифф.
+Скилл `page-screenshot` приходит с плагином.
