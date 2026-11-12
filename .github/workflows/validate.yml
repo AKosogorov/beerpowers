@@ -77,6 +77,9 @@ jobs:
       - name: Git-логика скриптов — профили, база задачи, влитость, стенд
         run: sh plugins/beerpowers/tests/bin/git.test.sh
 
+      - name: layout-check — правка без вёрстки против классов, шаблона, текста и стилей
+        run: sh plugins/beerpowers/tests/bin/layout-check.test.sh
+
       - name: Скрипты templates/bin отвечают на --help
         run: sh plugins/beerpowers/tests/bin/help.test.sh
 

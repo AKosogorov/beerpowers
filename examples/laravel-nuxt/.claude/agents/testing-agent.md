@@ -113,7 +113,9 @@ projects/shop-backend/vendor/bin/phpstan analyse -c projects/shop-backend/phpsta
 ## Минимальный sweep
 
 Каждый затронутый экран — на каждой ширине из `viewports` (скилл `beerpowers:page-screenshot`),
-с реальным взаимодействием на каждой, не просто рендер.
+с реальным взаимодействием на каждой, не просто рендер. Одна ширина вместо всех — только
+по решению в `preflight.md` задачи (charter, «Прогон по ширинам»); тогда в отчёте строка
+«Ширины: <ширина> — решение preflight от <дата>».
 
 Скриншоты снимаешь, когда в этом заходе проверял экраны. Не проверял — заход был про тесты, API
 или данные, либо фикс экран не менял и скриншоты прошлого захода в силе, — пиши в отчёте строку
@@ -205,7 +207,7 @@ real-browser», со статусом pass/fail/skip и ссылками на с
 <!-- /beerpowers:engine -->
 
 <!-- beerpowers:engine checklist-ui if=ui:true -->
-- [ ] Real-browser прогон на каждой ширине из `viewports` с реальными жестами
+- [ ] Real-browser прогон на каждой ширине из `viewports` (или на ширине из решения `preflight.md`) с реальными жестами
 - [ ] Скриншоты в `memory/tasks/<КОД>/screenshots/` с именами по скиллу `beerpowers:page-screenshot`
 - [ ] Console и network без errors/warnings и без 4xx/5xx на штатных операциях
 - [ ] «Visual check PASS/FAIL» с перечислением реально открытых через `Read` скриншотов
