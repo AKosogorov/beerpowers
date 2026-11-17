@@ -108,6 +108,7 @@ pass | guard-comments | comments-copies | копии плагина с шапк�
 deny:свой скрипт проекта | guard-comments | comments-copies-own | проектный скрипт рядом с копиями показывается | {"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}
 pass | guard-comments | comments-none | без комментариев: URL, shebang, атрибут PHP | {"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}
 deny:пересказ на питоне | guard-comments | comments-hash | комментарий # | {"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}
+deny:пересказ в файле с пробелом | guard-comments | comments-names | имя файла с пробелом и не-ASCII | {"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}
 deny:Ссылаются на контекст задачи | guard-comments | comments-context | метка, «ответ N» и memory/tasks названы отдельно | {"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}
 deny:см. B3 | guard-comments | comments-context | метка charter в тексте комментария | {"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}
 deny:const a = 1 // ответ 28 | guard-comments | comments-context | «ответ N» в хвостовом комментарии | {"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}
