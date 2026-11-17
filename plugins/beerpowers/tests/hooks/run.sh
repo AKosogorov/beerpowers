@@ -204,6 +204,13 @@ fx_comments_hash() {
   stage "$1" app/job.py '# пересказ на питоне'
 }
 
+# Имя с пробелом и не-ASCII: git дописывает табуляцию к заголовку +++ и экранирует байты имени.
+fx_comments_names() {
+  charter "$1"
+  repo "$1"
+  stage "$1" 'src/имя с пробелом.ts' '// пересказ в файле с пробелом'
+}
+
 fx_comments_context() {
   charter "$1"
   repo "$1"
