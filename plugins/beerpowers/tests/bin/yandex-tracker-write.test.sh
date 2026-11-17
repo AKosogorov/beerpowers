@@ -11,8 +11,9 @@ src="$here/../../templates/bin/yandex-tracker-write.mjs"
 skill="$here/../../skills/tracker-task/SKILL.md"
 
 tmp=$(mktemp -d 2>/dev/null) || tmp="${TMPDIR:-/tmp}/bp-ytw-$$"
-mkdir -p "$tmp/ws/.claude/bin" "$tmp/home/.claude" "$tmp/d" || exit 2
+mkdir -p "$tmp/ws/.claude/bin/lib" "$tmp/home/.claude" "$tmp/d" || exit 2
 sed 's/{{BEERPOWERS_VERSION}}/0.0.0/' "$src" > "$tmp/ws/.claude/bin/yandex-tracker-write.mjs"
+sed 's/{{BEERPOWERS_VERSION}}/0.0.0/' "$here/../../templates/bin/lib/signature.mjs" > "$tmp/ws/.claude/bin/lib/signature.mjs"
 w="$tmp/ws/.claude/bin/yandex-tracker-write.mjs"
 
 node "$here/tracker-api-stub.mjs" "$tmp/port" "$tmp/log" &
@@ -344,6 +345,26 @@ for kind in task bug; do
   awk -v h="$head" '$0 == h { on = 1; next } on && /^## / { exit } on' "$skill" \
     | sed -n 's/^| `## \([^`]*\)`.*/\1/p' > "$tmp/skill-$kind"
 done
+# lib/signature.mjs отдельно: подпись коммитов и MR (git-flow.md, «Подпись») берётся из него же.
+sig="$tmp/ws/.claude/bin/lib/signature.mjs"
+total=$((total + 1))
+out=$(env CLAUDE_CONFIG_DIR="$tmp/home/.claude" CLAUDE_CODE_SESSION_ID=s-sonnet node "$sig" 2>&1)
+if [ "$out" = "© Клод Клодыч Сонетович" ]; then
+  echo "pass  signature.mjs: подпись по модели сессии"
+else
+  failed=$((failed + 1))
+  echo "FAIL  signature.mjs: подпись по модели сессии — «$out»"
+fi
+total=$((total + 1))
+out=$(env -u CLAUDE_CODE_SESSION_ID CLAUDE_CONFIG_DIR="$tmp/home/.claude" node "$sig" 2>&1)
+code=$?
+if [ "$code" = 1 ] && printf '%s' "$out" | grep -q 'модель сессии не узнать'; then
+  echo "pass  signature.mjs: без сессии — отказ"
+else
+  failed=$((failed + 1))
+  echo "FAIL  signature.mjs: без сессии — код $code, «$out»"
+fi
+
 if cmp -s "$tmp/script-task" "$tmp/skill-task" && cmp -s "$tmp/script-bug" "$tmp/skill-bug" && [ -s "$tmp/skill-task" ]; then
   echo "pass  секции шаблона = таблицы скила tracker-task"
 else
