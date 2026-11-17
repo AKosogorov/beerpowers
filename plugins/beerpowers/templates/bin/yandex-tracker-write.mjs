@@ -69,9 +69,9 @@
 
 import crypto from 'node:crypto';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { configDir, ownSignature, sessionModel, SIGN_ANY, SIGN_TEXT } from './lib/signature.mjs';
 
 const self = fileURLToPath(import.meta.url);
 
@@ -117,44 +117,15 @@ const SECTIONS = {
 const TYPES = { 'Задача': 'task', 'Ошибка': 'bug' };
 const FIELDS = ['Очередь', 'Тип', 'Доска', 'Теги', 'Исполнитель', 'QA', 'Ревьюер', 'Связи'];
 const HEADER_LABELS = ['Зависит от:', 'Блокирует:', '⚠️ При выкладке:'];
-// Отчество подписи — по семейству модели сессии.
-const PATRONYMIC = { opus: 'Опусович', sonnet: 'Сонетович', haiku: 'Хайкувич', fable: 'Фейблович' };
 // Подпись в черновике — простой строкой; оранжевый курсив — уже отправленная, в тексте из задачи.
-const SIGN_TEXT = `© Клод Клодыч (?:${Object.values(PATRONYMIC).join('|')})`;
 const SIGNATURE = new RegExp(`^(?:${SIGN_TEXT}|\\{orange\\}\\(\\*${SIGN_TEXT}\\*\\))$`);
 const SIGN_PLAIN = new RegExp(`^${SIGN_TEXT}$`);
 // Последняя строка, которая пытается быть подписью: простая или оранжевая, начинается с «©».
 const SIGN_LIKE = /^(?:\{orange\}\(\*)?©/;
-const SIGN_ANY = `© Клод Клодыч <${Object.values(PATRONYMIC).join('|')} — по модели сессии>`;
-
-const configDir = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
-
-// Семейство модели сессии по её транскрипту: последний ответ модели называет её имя.
-// Не узнать — null, и подпись остаётся на сессии.
-function sessionModel() {
-  const id = process.env.CLAUDE_CODE_SESSION_ID || '';
-  if (!/^[\w-]+$/.test(id)) return null;
-  const root = path.join(configDir, 'projects');
-  let dirs;
-  try { dirs = fs.readdirSync(root); } catch { return null; }
-  for (const dir of dirs) {
-    const file = path.join(root, dir, `${id}.jsonl`);
-    if (!fs.existsSync(file)) continue;
-    const lines = fs.readFileSync(file, 'utf8').split('\n');
-    for (let i = lines.length - 1; i >= 0; i--) {
-      if (!lines[i].includes('"assistant"')) continue;
-      let model;
-      try { model = JSON.parse(lines[i]).message?.model; } catch { continue; }
-      // Служебные записи без модели («<synthetic>») пропускаются.
-      const family = Object.keys(PATRONYMIC).find((f) => String(model || '').includes(f));
-      if (family) return family;
-    }
-  }
-  return null;
-}
 
 const SESSION = sessionModel();
-const OWN_SIGN = SESSION ? `© Клод Клодыч ${PATRONYMIC[SESSION]}` : null;
+const OWN_SIGN = ownSignature(SESSION);
+
 // Ключ задачи, но не имя файла по ключу: SHOP-44-tech.md связи не требует.
 const KEY = /\b[A-Z][A-Z0-9]+-\d+\b(?!-[a-zа-яё])/g;
 
