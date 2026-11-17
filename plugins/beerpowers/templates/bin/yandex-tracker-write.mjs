@@ -341,7 +341,8 @@ function checkDraft(d) {
     if (idx < at) errors.push(`секция «${s.name}» не на своём месте: порядок — ${want.map(([n]) => (Array.isArray(n) ? n[0] : n)).join(' → ')}`);
     at = Math.max(at, idx);
     if (!s.body.join('').trim()) errors.push(`секция «${s.name}» пустая — необязательную убрать, обязательную заполнить`);
-    else if (s.name === 'Где' && !hasPage(s.body.join('\n'))) errors.push('## Где: нет адреса страницы, только корень сайта или ничего — укажи полный адрес каждой страницы, которую задача создаёт или меняет (новая страница — адресом, по которому появится, даже если сейчас 404)');
+    else if (s.name === 'Где' && type === 'bug' && !hasPage(s.body.join('\n'), false)) errors.push('## Где: нет адреса страницы, только корень стенда или ничего — укажи полный адрес той страницы, где баг воспроизводится');
+    else if (s.name === 'Где' && type === 'task' && !hasPage(s.body.join('\n'), true)) errors.push('## Где: нет ни одного адреса сайта или страницы — укажи полный адрес каждой страницы, которую задача создаёт или меняет (новая страница — адресом, по которому появится, даже если сейчас 404; сквозной элемент — адресом любой страницы, где он виден, главная тоже подходит)');
   }
   for (const [n, required] of want) {
     const names = Array.isArray(n) ? n : [n];
@@ -365,14 +366,16 @@ function checkDraft(d) {
   return { errors, warnings, type, links, description };
 }
 
-// В «## Где» есть адрес страницы: ссылка с путём длиннее «/». Корень сайта страницей
-// не считается, макет Figma — тоже.
-function hasPage(text) {
+// В «## Где» есть адрес страницы: ссылка с путём длиннее «/», а с rootOk — и корень сайта.
+// Корень годится задаче: у сквозного элемента бывает только адрес главной. Багу — нет: ему
+// нужна страница, где он воспроизводится. Макет Figma страницей не считается.
+function hasPage(text, rootOk) {
   for (const m of text.matchAll(/https?:\/\/[^\s)<>\]]+/g)) {
     let u;
-    try { u = new URL(m[0]); } catch { continue; }
+    // Знак препинания после адреса — часть фразы, не пути: «https://site.ru/, телефон».
+    try { u = new URL(m[0].replace(/[.,;:!?]+$/, '')); } catch { continue; }
     if (/(^|\.)figma\.com$/.test(u.hostname)) continue;
-    if (u.pathname.replace(/\/+$/, '')) return true;
+    if (rootOk || u.pathname.replace(/\/+$/, '')) return true;
   }
   return false;
 }

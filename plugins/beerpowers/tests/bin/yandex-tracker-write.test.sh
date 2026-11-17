@@ -226,10 +226,11 @@ $sign"
 }
 where where-root.md '- Стенд: https://dev.example.ru
 - Рабочий сайт: https://example.ru/'
-t "check: «Где» только с корнями сайтов — отказ" 1 "## Где: нет адреса страницы" -- check "$tmp/d/where-root.md"
-where where-figma.md '- Стенд: https://dev.example.ru
-- Макет: https://www.figma.com/design/abc/x?node-id=1-2'
-t "check: «Где» с корнем и макетом Figma — отказ" 1 "## Где: нет адреса страницы" -- check "$tmp/d/where-figma.md"
+t "check: «Где» задачи только с корнями сайтов проходит" 0 "сходится с шаблоном" -- check "$tmp/d/where-root.md"
+where where-figma.md '- Макет: https://www.figma.com/design/abc/x?node-id=1-2'
+t "check: «Где» задачи только с макетом Figma — отказ" 1 "## Где: нет ни одного адреса сайта или страницы" -- check "$tmp/d/where-figma.md"
+where where-none.md '- Везде, где есть шапка.'
+t "check: «Где» задачи без ссылок — отказ" 1 "## Где: нет ни одного адреса сайта или страницы" -- check "$tmp/d/where-none.md"
 where where-new.md '- Стенд: https://dev.example.ru/where-to-buy (сейчас 404)'
 t "check: «Где» с адресом новой страницы проходит" 0 "сходится с шаблоном" -- check "$tmp/d/where-new.md"
 
@@ -265,6 +266,47 @@ cat > "$tmp/d/bug.md" <<EOF
 $sign
 EOF
 t "check: баг без обязательных секций" 1 "нет обязательной секции «Доказательства»" "нет обязательной секции «Влияние»" -- check "$tmp/d/bug.md"
+
+cat > "$tmp/d/bug-root.md" <<EOF
+# Каталог: фильтр откатывает выбор (front)
+
+| Поле | Значение |
+|---|---|
+| Очередь | QQ |
+| Тип | Ошибка |
+| Доска | 7 |
+| Теги | Frontend |
+| Связи | — |
+
+---
+
+## Где
+
+- https://example.test/, телефон 390×844.
+
+## Шаги воспроизведения
+
+1. Открыть каталог.
+
+## Фактический результат
+
+- Выбор сброшен.
+
+## Ожидаемый результат
+
+- Выбор сохранён.
+
+## Доказательства
+
+- Видео.
+
+## Влияние
+
+- Все пользователи каталога.
+
+$sign
+EOF
+t "check: «Где» бага только с корнем стенда — отказ" 1 "## Где: нет адреса страницы, только корень стенда" -- check "$tmp/d/bug-root.md"
 
 t "check: create без чистого check ничего не шлёт" 1 "ничего не отправлено" "nolog:POST /issues" -- create "$tmp/d/nosuffix.md"
 
